@@ -1,0 +1,520 @@
+.print-ballot-page {
+
+    background: #fff;
+    min-height: 100vh;
+    padding: 12px;
+    box-sizing: border-box;
+
+}
+
+.pdf-export-mode {
+
+    background: #fff;
+    min-height: 100vh;
+    padding: 12px;
+    box-sizing: border-box;
+
+}
+
+.pdf-preparing-box {
+
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background: #fff;
+    color: #1f2937;
+
+}
+
+.ballot-container {
+
+    display: block;
+    width: 100%;
+
+}
+
+.ballot-page {
+
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    margin: 0;
+    page-break-inside: avoid;
+    break-inside: avoid;
+
+}
+
+.half-ballot {
+
+    position: relative;
+    width: 100%;
+    min-height: 0;
+    box-sizing: border-box;
+    padding: 6mm;
+    border-right: 1px dashed #000;
+    font-size: 10px;
+    overflow: hidden;
+
+}
+
+.half-ballot h2 {
+
+    text-align: center;
+
+    font-size: 14px;
+
+    margin: 2px;
+
+}
+
+.half-ballot h3 {
+
+    text-align: center;
+
+    font-size: 12px;
+
+    margin: 2px;
+
+}
+
+.serial-number {
+
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 10px;
+    font-weight: 600;
+
+}
+
+.qr-small {
+
+    text-align: center;
+
+    margin: 3px;
+
+}
+
+.instruction {
+
+    font-size: 8px;
+
+}
+
+.position-small {
+
+    margin-top: 4px;
+
+    border-bottom: 1px solid #999;
+
+    padding-bottom: 2px;
+
+}
+
+.candidate-small {
+
+    font-size: 8px;
+
+    line-height: 14px;
+    break-inside: avoid;
+
+}
+
+/* ===========================
+   CIRCLE INSTEAD OF SQUARE
+=========================== */
+
+.shade-box {
+
+    display: inline-block;
+
+    width: 10px;
+
+    height: 10px;
+
+    border: 2px solid #000;
+
+    border-radius: 2px;
+
+    margin-right: 5px;
+
+    vertical-align: middle;
+
+}
+
+/* =========================== */
+
+.center {
+
+    text-align: center;
+
+}
+
+.ballot-quote {
+    margin: 6px 0 0;
+    font-size: 8px;
+    font-style: italic;
+    line-height: 1.2;
+}
+
+/* BUTTON AREA */
+
+.print-hide {
+
+    display: block;
+
+    margin-bottom: 10px;
+
+}
+
+/* PRINT ONLY */
+
+@media print {
+
+    @page {
+
+        size: A4 landscape;
+
+        margin: 6mm;
+
+    }
+
+    html,
+    body {
+
+        margin: 0 !important;
+
+        background: #fff !important;
+
+        overflow: visible !important;
+
+    }
+
+    .app-shell,
+    .app-content,
+    .sidebar,
+    .mobile-sidebar-toggle,
+    .sidebar-backdrop,
+    .print-hide {
+
+        display: none !important;
+
+    }
+
+    .print-ballot-page,
+    .pdf-export-mode {
+
+        display: block !important;
+
+        width: 100% !important;
+
+        background: #fff !important;
+
+        padding: 0 !important;
+
+        margin: 0 !important;
+
+    }
+
+    .ballot-container {
+
+        width: 100% !important;
+
+        display: block !important;
+
+        gap: 0 !important;
+
+        margin: 0 !important;
+
+    }
+
+    .ballot-page {
+
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        width: 100% !important;
+        height: 196mm !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        margin: 0 !important;
+
+    }
+
+    .ballot-page:not(:last-child) {
+        page-break-after: always !important;
+        break-after: page !important;
+    }
+
+    .half-ballot {
+
+        width: 100% !important;
+
+        height: 196mm !important;
+        min-height: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+
+        box-sizing: border-box;
+
+        page-break-inside: avoid !important;
+
+        break-inside: avoid !important;
+
+        border-right: 1px dashed #000;
+
+        margin: 0 !important;
+
+        padding: 3mm !important;
+        overflow: hidden !important;
+        font-size: 10px !important;
+
+        color: #000 !important;
+
+        background: #fff !important;
+
+    }
+
+    .half-ballot * {
+
+        color: #000 !important;
+
+    }
+
+    .half-ballot .ballot-header {
+        margin-bottom: 2px !important;
+        line-height: 1 !important;
+    }
+
+    .half-ballot .ballot-header img {
+        width: 28px !important;
+        height: 28px !important;
+    }
+
+    .half-ballot .ballot-header h1 {
+        font-size: 15px !important;
+        margin: 1px 0 !important;
+    }
+
+    .half-ballot .ballot-header p {
+        font-size: 9px !important;
+        margin: 0 !important;
+    }
+
+    .half-ballot h2 {
+        font-size: 14px !important;
+        line-height: 1.1 !important;
+        margin: 1px 0 !important;
+    }
+
+    .half-ballot h3 {
+        font-size: 12px !important;
+        margin: 1px 0 !important;
+    }
+
+    .half-ballot .serial-number {
+        font-size: 10px !important;
+        margin: 1px 0 !important;
+    }
+
+    .half-ballot .instruction {
+        font-size: 8px !important;
+        margin: 1px 0 !important;
+    }
+
+    .half-ballot .qr-small {
+        margin: 1px !important;
+        line-height: 0 !important;
+    }
+
+    .half-ballot .qr-small canvas {
+        width: 25px !important;
+        height: 25px !important;
+    }
+
+    .half-ballot .ballot-positions {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        align-content: start !important;
+        column-gap: 3mm !important;
+        row-gap: 0 !important;
+        overflow: hidden !important;
+    }
+
+    .half-ballot .position-small {
+        margin-top: 1px !important;
+        padding-bottom: 1px !important;
+        font-size: 10px !important;
+        line-height: 1.05 !important;
+        break-inside: avoid !important;
+    }
+
+    .half-ballot .position-subheading,
+    .half-ballot .position-small > div {
+        font-size: 9px !important;
+        line-height: 1.05 !important;
+        margin: 0 !important;
+    }
+
+    .half-ballot .candidate-list {
+        margin-top: 0 !important;
+    }
+
+    .half-ballot .candidate-small {
+        font-size: 8px !important;
+        line-height: 8px !important;
+        break-inside: avoid !important;
+    }
+
+    .half-ballot .shade-box {
+        width: 7px !important;
+        height: 7px !important;
+        border-width: 1px !important;
+        margin-right: 2px !important;
+    }
+
+    .half-ballot .center {
+        flex: 0 0 auto !important;
+        font-size: 8px !important;
+        line-height: 1 !important;
+    }
+
+    .half-ballot .ballot-quote {
+        margin-top: 2px !important;
+        font-size: 8px !important;
+    }
+
+    .half-ballot hr {
+        margin: 1px 0 !important;
+    }
+
+    .ballot {
+        max-width: none !important;
+        width: 100% !important;
+        padding: 3mm !important;
+    }
+
+}
+
+.ballot {
+    position: relative;
+    max-width: 210mm;
+    margin: 0 auto;
+    padding: 12mm;
+    background: #fff;
+    color: #000;
+    box-sizing: border-box;
+}
+
+.registration-markers {
+    position: absolute;
+    inset: 2mm;
+    pointer-events: none;
+}
+
+.registration-mark {
+    position: absolute;
+    width: 0;
+    height: 0;
+    border: 3.5mm solid #000;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+}
+
+.registration-mark.top-left {
+    top: 0;
+    left: 0;
+}
+
+.registration-mark.top-right {
+    top: 0;
+    right: 0;
+}
+
+.registration-mark.bottom-left {
+    bottom: 0;
+    left: 0;
+}
+
+.registration-mark.bottom-right {
+    right: 0;
+    bottom: 0;
+}
+
+.ballot-header {
+    text-align: center;
+    line-height: 1.15;
+    margin-bottom: 5px;
+}
+
+.ballot-header img {
+    width: 58px;
+    height: 58px;
+    object-fit: contain;
+}
+
+.ballot-header h1 {
+    font-size: 15px;
+    margin: 2px 0;
+}
+
+.ballot-header p {
+    font-size: 9px;
+    margin: 1px 0;
+}
+
+.ballot-title,
+.ballot-subtitle {
+    text-align: center;
+    margin: 3px 0;
+}
+
+.ballot-title {
+    font-size: 13px;
+}
+
+.ballot-subtitle {
+    font-size: 11px;
+}
+
+.ballot-positions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 14px;
+    align-items: start;
+}
+
+.position,
+.position-small {
+    margin-top: 4px;
+    border-bottom: 1px solid #999;
+    padding-bottom: 3px;
+}
+
+.wide-position {
+    grid-column: 1 / -1;
+}
+
+.candidate-list {
+    margin-top: 2px;
+}
+
+.wide-position .candidate-list {
+    columns: 2;
+    column-gap: 16px;
+}
+
+.candidate {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 4px 0;
+}
+
+.position-subheading {
+    font-size: 9px;
+    font-weight: 700;
+    margin: 1px 0 2px;
+}

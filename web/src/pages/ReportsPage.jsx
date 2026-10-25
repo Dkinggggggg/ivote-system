@@ -1,0 +1,557 @@
+import React, { useEffect, useState } from 'react';
+import apiClient from '../api/apiClient';
+import PaginationControls from '../components/PaginationControls';
+import LoadingSkeleton from '../components/LoadingSkeleton';
+
+export default function ReportsPage() {
+
+  const [elections, setElections] = useState([]);
+  const [selectedElection, setSelectedElection] = useState('');
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    loadElections();
+  }, []);
+
+  useEffect(() => {
+    if (selectedElection) {
+      loadResults(selectedElection);
+    }
+  }, [selectedElection]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedElection]);
+
+  async function loadElections() {
+
+    try {
+
+      const { data } = await apiClient.get('/elections');
+
+      const list = data.data ?? data;
+
+      setElections(list);
+
+      if (list.length > 0) {
+        setSelectedElection(list[0].id);
+      }
+
+    } catch (err) {
+
+      console.error(err);
+      setError('Unable to load elections.');
+      setLoading(false);
+
+    }
+
+  }
+
+  async function loadResults(id) {
+
+    setLoading(true);
+
+    try {
+
+      const { data } = await apiClient.get(
+        `/reports/winners?election_id=${id}`
+      );
+
+      setReport(data);
+
+    } catch (err) {
+
+      console.error(err);
+      setError('Unable to load election results.');
+
+    } finally {
+
+      setLoading(false);
+
+    }
+
+  }
+
+  const pageSize = 10;
+  const reportRows = report?.results || [];
+  const totalPages = Math.max(1, Math.ceil(reportRows.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const visibleRows = reportRows.slice(startIndex, startIndex + pageSize);
+  const startItem = reportRows.length === 0 ? 0 : startIndex + 1;
+  const endItem = Math.min(startIndex + pageSize, reportRows.length);
+
+  async function downloadCSV() {
+
+    try {
+
+      const { data } = await apiClient.get(
+        `/reports/results?election_id=${selectedElection}`,
+        {
+          responseType: 'blob',
+        }
+      );
+
+      const url = window.URL.createObjectURL(
+        new Blob([data], { type: 'text/csv' })
+      );
+
+      const link = document.createElement('a');
+
+      link.href = url;
+      link.download = 'official-election-results.csv';
+      link.click();
+
+      window.URL.revokeObjectURL(url);
+
+    } catch {
+
+      setError('Failed to download report.');
+
+    }
+
+  }
+
+  function printResults() {
+
+    if (!report) return;
+
+    const printWindow = window.open('', '', 'width=1000,height=900');
+
+    const rows = report.results.map(item => `
+      <tr>
+        <td>${item.position}</td>
+        <td>${item.winner}</td>
+        <td>${item.party}</td>
+        <td style="text-align:center">${item.votes}</td>
+      </tr>
+    `).join('');
+
+    printWindow.document.write(`
+<html>
+
+<head>
+
+<title>Official Election Results</title>
+
+<style>
+
+body{
+font-family:Arial,sans-serif;
+padding:40px;
+color:#000;
+}
+
+h1{
+text-align:center;
+margin-bottom:5px;
+}
+
+h2{
+text-align:center;
+margin-top:0;
+font-weight:normal;
+margin-bottom:35px;
+}
+
+.info{
+margin-bottom:25px;
+}
+
+.info p{
+margin:6px 0;
+font-size:16px;
+}
+
+table{
+width:100%;
+border-collapse:collapse;
+margin-top:20px;
+}
+
+th{
+background:#0f4c81;
+color:white;
+padding:10px;
+border:1px solid #000;
+}
+
+td{
+padding:10px;
+border:1px solid #000;
+}
+
+.summary{
+margin-top:25px;
+width:320px;
+}
+
+.summary p{
+margin:8px 0;
+}
+
+.signature{
+display:flex;
+justify-content:space-between;
+margin-top:70px;
+}
+
+.sign{
+width:250px;
+text-align:center;
+}
+
+.line{
+margin-top:60px;
+border-top:1px solid black;
+padding-top:8px;
+}
+
+.footer{
+margin-top:60px;
+text-align:center;
+font-size:14px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h1>OFFICIAL ELECTION RESULTS</h1>
+
+<h2>iVote Mobile Ballot Recognition System</h2>
+
+<div class="info">
+
+<p><strong>Election:</strong> ${report.election}</p>
+
+<p><strong>Status:</strong> ${report.status}</p>
+
+<p><strong>Date Generated:</strong> ${new Date().toLocaleString()}</p>
+
+</div>
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>Position</th>
+
+<th>Winner</th>
+
+<th>Party</th>
+
+<th>Votes</th>
+
+</tr>
+
+</thead>
+
+<tbody>
+
+${rows}
+</tbody>
+
+</table>
+
+<div class="summary">
+
+<p><strong>Total Ballots Cast:</strong> ${report.total_ballots}</p>
+
+<p><strong>Valid Ballots:</strong> ${report.valid_ballots}</p>
+
+<p><strong>Invalid Ballots:</strong> ${report.invalid_ballots}</p>
+
+</div>
+
+<div class="signature">
+
+<div class="sign">
+
+<div class="line">
+Election Administrator
+</div>
+
+</div>
+
+<div class="sign">
+
+<div class="line">
+COMELEC Chairperson
+</div>
+
+</div>
+
+</div>
+
+<div class="footer">
+
+Generated by <strong>iVote Mobile Ballot Recognition System</strong>
+
+</div>
+
+</body>
+
+</html>
+    `);
+
+    printWindow.document.close();
+
+    printWindow.focus();
+
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 500);
+
+  }
+
+  if (loading) {
+    return <LoadingSkeleton variant="report" label="Loading official election results" />;
+  }
+
+  return (
+
+    <div className="page-container" style={{ maxWidth: "1280px", margin: "0 auto" }}>
+
+      {/* HEADER */}
+
+      <div className="page-header" style={{ alignItems: "center", marginBottom: 0 }}>
+
+        <div>
+
+          <h1>Official Election Results</h1>
+
+        </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+
+          <button
+            className="btn link-button"
+            onClick={downloadCSV}
+          >
+            Download CSV
+          </button>
+
+          <button
+            className="btn btn-primary"
+            onClick={printResults}
+          >
+            Print Results
+          </button>
+
+        </div>
+
+      </div>
+
+      {error && (
+        <div className="alert alert-danger">
+          {error}
+        </div>
+      )}
+
+      {/* Election Selector */}
+
+      <div className="card">
+
+        <div className="card-header">
+
+          <strong>Select Election</strong>
+
+        </div>
+
+        <div className="card-body">
+
+          <div style={{ maxWidth: "420px" }}>
+
+    <select
+      className="form-control"
+      value={selectedElection}
+      onChange={(e) => setSelectedElection(e.target.value)}
+      style={{
+        width: "100%",
+      }}
+    >
+
+            {elections.map((election) => (
+
+              <option
+                key={election.id}
+                value={election.id}
+              >
+                {election.title}
+              </option>
+
+            ))}
+          </select>
+
+          </div>
+
+      </div>
+
+      {report && (
+        <>
+          {/* Summary Cards */}
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
+              gap: "16px",
+              marginBottom: "24px",
+            }}
+          >
+
+            <ReportMetric label="Election" value={report.election} borderColor="var(--primary-2)" />
+            <ReportMetric
+              label="Status"
+              value={String(report.status).toUpperCase()}
+              valueColor={report.status === "Closed" ? "var(--danger)" : "var(--success)"}
+              borderColor="var(--accent)"
+            />
+            <ReportMetric label="Ballots" value={report.total_ballots} borderColor="var(--primary-2)" />
+            <ReportMetric
+              label="Valid Ballots"
+              value={report.valid_ballots}
+              valueColor="var(--success)"
+              borderColor="var(--accent)"
+            />
+            <ReportMetric
+              label="Invalid Ballots"
+              value={report.invalid_ballots}
+              valueColor="var(--danger)"
+              borderColor="var(--primary-2)"
+            />
+
+          </div>
+
+          {/* Winners Table */}
+
+          <div className="card">
+
+            <div className="card-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+
+              <h2 className="text-xl font-semibold">
+                Official Winners
+              </h2>
+
+              <span style={{ color: "var(--muted)", fontSize: "14px" }}>
+                {reportRows.length} record{reportRows.length === 1 ? "" : "s"}
+              </span>
+
+            </div>
+
+            <div className="table-shell" style={{ overflowX: "auto" }}>
+
+              <table className="data-table" style={{ minWidth: "760px" }}>
+
+                <thead>
+
+                  <tr>
+
+                    <th style={{ textAlign: "left" }}>
+                      Position
+                    </th>
+
+                    <th style={{ textAlign: "center" }}>
+                      Standing
+                    </th>
+
+                    <th style={{ textAlign: "left" }}>
+                      Winner
+                    </th>
+
+                    <th style={{ textAlign: "left" }}>
+                      Party
+                    </th>
+
+                    <th style={{ textAlign: "center" }}>
+                      Votes
+                    </th>
+
+                  </tr>
+
+                </thead>
+
+                <tbody>
+
+                  {visibleRows.map((item, index) => (
+
+                    <tr
+                      key={index}
+                      style={{ borderTop: "1px solid #EEF2F5" }}
+                    >
+
+                      <td>
+                        {item.position}
+                      </td>
+
+                      <td style={{ textAlign: "center", fontWeight: 700 }}>
+                        {item.standing ? `#${item.standing}` : "-"}
+                      </td>
+
+                      <td style={{ fontWeight: 600 }}>
+                        {item.winner}
+                      </td>
+
+                      <td>
+                        {item.party}
+                      </td>
+
+                      <td style={{ textAlign: "center", fontWeight: 700 }}>
+                        {item.votes}
+                      </td>
+
+                    </tr>
+
+                  ))}
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+            <div style={{ padding: '0 24px 20px' }}>
+              <PaginationControls
+                currentPage={safeCurrentPage}
+                totalPages={totalPages}
+                totalItems={reportRows.length}
+                startItem={startItem}
+                endItem={endItem}
+                onPrevious={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                onNext={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+              />
+            </div>
+
+          </div>
+
+        </>
+      )}
+
+    </div>
+    </div>
+
+  );
+
+}
+
+function ReportMetric({ label, value, valueColor, borderColor = "var(--primary-2)" }) {
+  return (
+    <div className="dashboard-card" style={{ borderLeft: `5px solid ${borderColor}` }}>
+      <div style={{ color: "var(--muted)", fontSize: "13px", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        {label}
+      </div>
+      <div style={{ fontSize: "18px", fontWeight: 700, color: valueColor || "var(--primary)" }}>
+        {value}
+      </div>
+    </div>
+  );
+}
