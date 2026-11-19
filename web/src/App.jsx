@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import AppLayout from './components/Layout/AppLayout';
@@ -10,6 +11,7 @@ import DashboardPage from './pages/DashboardPage';
 import ElectionsPage from './pages/ElectionsPage';
 import PositionsPage from './pages/PositionsPage';
 import CandidatesPage from './pages/CandidatesPage';
+import ElectionCandidatesPage from './pages/ElectionCandidatesPage';
 import BallotsPage from './pages/BallotsPage';
 
 import PrintBallotPage from './pages/PrintBallotPage';
@@ -44,7 +46,7 @@ export default function App() {
 
           <Route
             path="/results"
-            element={<PublicResultsPage />}
+            element={<ThemeProvider><PublicResultsPage /></ThemeProvider>}
           />
 
           <Route
@@ -88,8 +90,28 @@ export default function App() {
               />
 
               <Route
+                path="/election-management"
+                element={<ElectionsPage />}
+              />
+
+              <Route
+                path="/election-management/:electionId/party-list"
+                element={<ElectionCandidatesPage />}
+              />
+
+              <Route
+                path="/election-management/:electionId/candidates"
+                element={<ElectionCandidatesPage />}
+              />
+
+              <Route
                 path="/elections/:electionId/positions"
                 element={<PositionsPage />}
+              />
+
+              <Route
+                path="/elections/:electionId/candidates"
+                element={<ElectionCandidatesPage />}
               />
 
               <Route

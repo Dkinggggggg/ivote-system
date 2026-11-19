@@ -56,6 +56,9 @@
     padding: 6mm;
     border-right: 1px dashed #000;
     font-size: 10px;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #000;
+    background: #fff;
     overflow: hidden;
 
 }
@@ -64,7 +67,7 @@
 
     text-align: center;
 
-    font-size: 14px;
+    font-size: 17px;
 
     margin: 2px;
 
@@ -74,7 +77,7 @@
 
     text-align: center;
 
-    font-size: 12px;
+    font-size: 13px;
 
     margin: 2px;
 
@@ -85,7 +88,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
 
 }
@@ -100,7 +103,7 @@
 
 .instruction {
 
-    font-size: 8px;
+    font-size: 11px;
 
 }
 
@@ -116,9 +119,9 @@
 
 .candidate-small {
 
-    font-size: 8px;
+    font-size: 12px;
 
-    line-height: 14px;
+    line-height: 1.2;
     break-inside: avoid;
 
 }
@@ -137,7 +140,7 @@
 
     border: 2px solid #000;
 
-    border-radius: 2px;
+    border-radius: 50%;
 
     margin-right: 5px;
 
@@ -275,6 +278,8 @@
 
         background: #fff !important;
 
+        font-family: Arial, Helvetica, sans-serif !important;
+
     }
 
     .half-ballot * {
@@ -299,28 +304,34 @@
     }
 
     .half-ballot .ballot-header p {
-        font-size: 9px !important;
+        font-size: 10px !important;
         margin: 0 !important;
     }
 
+    .half-ballot .ballot-header p:first-of-type {
+        font-size: 15px !important;
+    }
+
     .half-ballot h2 {
-        font-size: 14px !important;
+        font-size: 17px !important;
         line-height: 1.1 !important;
         margin: 1px 0 !important;
     }
 
     .half-ballot h3 {
-        font-size: 12px !important;
+        font-size: 13px !important;
         margin: 1px 0 !important;
     }
 
     .half-ballot .serial-number {
-        font-size: 10px !important;
+        font-size: 11px !important;
         margin: 1px 0 !important;
     }
 
-    .half-ballot .instruction {
-        font-size: 8px !important;
+    .half-ballot .ballot-instructions,
+    .half-ballot .ballot-instructions p {
+        font-size: 11px !important;
+        line-height: 1.15 !important;
         margin: 1px 0 !important;
     }
 
@@ -346,14 +357,13 @@
     .half-ballot .position-small {
         margin-top: 1px !important;
         padding-bottom: 1px !important;
-        font-size: 10px !important;
+        font-size: 13px !important;
         line-height: 1.05 !important;
         break-inside: avoid !important;
     }
 
-    .half-ballot .position-subheading,
     .half-ballot .position-small > div {
-        font-size: 9px !important;
+        font-size: 11px !important;
         line-height: 1.05 !important;
         margin: 0 !important;
     }
@@ -363,22 +373,27 @@
     }
 
     .half-ballot .candidate-small {
-        font-size: 8px !important;
-        line-height: 8px !important;
+        font-size: 12px !important;
+        line-height: 4mm !important;
         break-inside: avoid !important;
     }
 
     .half-ballot .shade-box {
-        width: 7px !important;
-        height: 7px !important;
-        border-width: 1px !important;
+        box-sizing: border-box !important;
+        width: 4mm !important;
+        height: 4mm !important;
+        border-width: 0.35mm !important;
         margin-right: 2px !important;
     }
 
     .half-ballot .center {
         flex: 0 0 auto !important;
-        font-size: 8px !important;
+        font-size: 10px !important;
         line-height: 1 !important;
+    }
+
+    .half-ballot .center small {
+        font-size: 10px !important;
     }
 
     .half-ballot .ballot-quote {
@@ -405,6 +420,7 @@
     padding: 12mm;
     background: #fff;
     color: #000;
+    font-family: Arial, Helvetica, sans-serif;
     box-sizing: border-box;
 }
 
@@ -465,6 +481,14 @@
     margin: 1px 0;
 }
 
+.ballot-header p:first-of-type {
+    font-size: 15px;
+}
+
+.ballot-header p:not(:first-of-type) {
+    font-size: 10px;
+}
+
 .ballot-title,
 .ballot-subtitle {
     text-align: center;
@@ -472,11 +496,26 @@
 }
 
 .ballot-title {
-    font-size: 13px;
+    font-size: 17px;
 }
 
 .ballot-subtitle {
+    font-size: 13px;
+}
+
+.ballot-info,
+.footer strong {
     font-size: 11px;
+}
+
+.ballot-instructions,
+.ballot-instructions p {
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+.ballot-instructions p {
+    margin: 3px 0;
 }
 
 .ballot-positions {
@@ -514,7 +553,16 @@
 }
 
 .position-subheading {
-    font-size: 9px;
+    font-size: 13px;
     font-weight: 700;
     margin: 1px 0 2px;
+}
+
+.position h3 {
+    font-size: 13px;
+}
+
+.candidate {
+    font-size: 12px;
+    line-height: 1.2;
 }

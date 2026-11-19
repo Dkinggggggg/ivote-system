@@ -81,9 +81,19 @@
 }
 
 .centered-login-brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
 	margin: 0;
 	color: #fff;
 	font: 700 20px Poppins, sans-serif;
+}
+
+.centered-login-brand-mark {
+	width: 68px;
+	height: 68px;
+	filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .32));
+	animation: centered-login-brand-float 3.2s ease-in-out infinite;
 }
 
 .centered-login-kicker {
@@ -298,6 +308,25 @@
 	transform: none;
 }
 
+.centered-login-secondary {
+	display: block;
+	min-height: 42px;
+	margin: 12px auto 0;
+	padding: 8px 14px;
+	border: 1px solid rgba(206, 219, 245, .22);
+	border-radius: 6px;
+	background: transparent;
+	color: #c9d4e8;
+	cursor: pointer;
+	font: 600 12px Inter, sans-serif;
+}
+
+.centered-login-secondary:hover,
+.centered-login-secondary:focus-visible {
+	border-color: rgba(255, 183, 0, .72);
+	color: #fff;
+}
+
 .centered-login-quote {
 	position: relative;
 	margin: 22px 0 0;
@@ -391,6 +420,11 @@
 	to { opacity: .62; transform: translate3d(7px, -12px, 0); }
 }
 
+@keyframes centered-login-brand-float {
+	0%, 100% { transform: translateY(0); }
+	50% { transform: translateY(-7px); }
+}
+
 @media (max-width: 480px) {
 	.centered-login-page { padding: 30px 16px 22px; }
 	.centered-login-card { padding: 27px 21px; }
@@ -401,6 +435,7 @@
 
 @media (prefers-reduced-motion: reduce) {
 	.centered-login-content { animation: none; }
+	.centered-login-brand-mark { animation: none; }
 	.centered-login-particles span { animation: none; }
 	.centered-login-success,
 	.centered-login-success-circle,

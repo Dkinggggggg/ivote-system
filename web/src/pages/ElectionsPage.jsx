@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import apiClient from '../api/apiClient';
+import Icon from '../components/Icon';
 import PaginationControls from '../components/PaginationControls';
 import LoadingSkeleton from '../components/LoadingSkeleton';
 import { useAuth } from '../context/AuthContext';
@@ -11,8 +12,10 @@ export default function ElectionsPage() {
 
   const [elections, setElections] = useState([]);
   const [title, setTitle] = useState('');
-  const [status, setStatus] = useState('draft');
+  const [editingElectionId, setEditingElectionId] = useState(null);
+  const [editingElectionTitle, setEditingElectionTitle] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingElection, setIsSavingElection] = useState(false);
   const [activePage, setActivePage] = useState(1);
   const [historyPage, setHistoryPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,11 +46,10 @@ export default function ElectionsPage() {
 
       await apiClient.post('/elections', {
         title,
-        status,
+        status: 'draft',
       });
 
       setTitle('');
-      setStatus('draft');
 
       await loadElections();
 
@@ -55,6 +57,34 @@ export default function ElectionsPage() {
 
       setIsSubmitting(false);
 
+    }
+  }
+
+  function startEditElection(election) {
+    setEditingElectionId(election.id);
+    setEditingElectionTitle(election.title);
+  }
+
+  function cancelEditElection() {
+    setEditingElectionId(null);
+    setEditingElectionTitle('');
+  }
+
+  async function handleSaveElection(event) {
+    event.preventDefault();
+    const updatedTitle = editingElectionTitle.trim();
+    if (!updatedTitle || editingElectionId === null) return;
+
+    setIsSavingElection(true);
+    try {
+      await apiClient.put(`/elections/${editingElectionId}`, { title: updatedTitle });
+      cancelEditElection();
+      await loadElections();
+    } catch (error) {
+      console.error(error);
+      alert(error.response?.data?.message || 'Failed to update election.');
+    } finally {
+      setIsSavingElection(false);
     }
   }
 
@@ -150,6 +180,8 @@ export default function ElectionsPage() {
   const activeElections = elections.filter(
     (e) => e.status === 'draft' || e.status === 'active'
   );
+  const activeElectionCount = elections.filter((e) => e.status === 'active').length;
+  const draftElectionCount = elections.filter((e) => e.status === 'draft').length;
 
   const historyElections = elections.filter(
     (e) => e.status === 'closed'
@@ -162,7 +194,7 @@ export default function ElectionsPage() {
     setHistoryPage(1);
   }, [elections.length]);
 
-  function renderTable(list, currentPage, setCurrentPage) {
+  function renderTable(list, currentPage, setCurrentPage, actionMode = 'history') {
 
     if (list.length === 0) {
       return <p className="muted">No elections found.</p>;
@@ -174,6 +206,7 @@ export default function ElectionsPage() {
     const visibleList = list.slice(startIndex, startIndex + pageSize);
     const startItem = list.length === 0 ? 0 : startIndex + 1;
     const endItem = Math.min(startIndex + pageSize, list.length);
+    const showActions = actionMode !== false;
 
     return (
 
@@ -189,7 +222,7 @@ export default function ElectionsPage() {
 
             <th>Title</th>
             <th>Status</th>
-            <th>Actions</th>
+            {showActions && <th>Actions</th>}
 
           </tr>
 
@@ -211,8 +244,37 @@ export default function ElectionsPage() {
 
               </td>
 
-              <td>
+              {showActions && <td>
 
+                {actionMode === 'manage' ? (
+                  String(editingElectionId) === String(election.id) ? (
+                    <form className="election-title-edit" onSubmit={handleSaveElection}>
+                      <input
+                        value={editingElectionTitle}
+                        onChange={(event) => setEditingElectionTitle(event.target.value)}
+                        maxLength={150}
+                        required
+                        autoFocus
+                        aria-label={`Edit ${election.title}`}
+                      />
+                      <button type="submit" className="election-row-icon-button is-save" disabled={isSavingElection} title="Save election title" aria-label="Save election title">
+                        <Icon name="save" size={15} />
+                      </button>
+                      <button type="button" className="election-row-icon-button" onClick={cancelEditElection} title="Cancel edit" aria-label="Cancel edit">
+                        <Icon name="close" size={15} />
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="election-row-actions">
+                      <button type="button" className="election-row-icon-button" onClick={() => startEditElection(election)} title={`Edit ${election.title}`} aria-label={`Edit ${election.title}`}>
+                        <Icon name="edit" size={15} />
+                      </button>
+                      <button type="button" className="election-row-icon-button is-danger" onClick={() => handleDelete(election.id)} title={`Delete ${election.title}`} aria-label={`Delete ${election.title}`}>
+                        <Icon name="delete" size={15} />
+                      </button>
+                    </div>
+                  )
+                ) : (
                 <div className="section-actions">
                 {election.status === 'closed' ? (
                   <button
@@ -223,9 +285,20 @@ export default function ElectionsPage() {
                     View Details
                   </button>
                 ) : (
-                  <Link to={`/elections/${election.id}/positions`}>
-                    Manage Positions →
-                  </Link>
+                  <>
+                    <Link
+                      to={`/elections/${election.id}/positions`}
+                      onClick={() => localStorage.setItem('selectedElectionId', String(election.id))}
+                    >
+                      Manage Positions →
+                    </Link>
+                    <Link
+                      to={`/elections/${election.id}/candidates`}
+                      onClick={() => localStorage.setItem('selectedElectionId', String(election.id))}
+                    >
+                      Manage Candidates →
+                    </Link>
+                  </>
                 )}
                 {election.status === "draft" && (
 
@@ -240,7 +313,7 @@ export default function ElectionsPage() {
                       fontWeight: "600"
                     }}
                   >
-                    Activate
+                    <Icon name="add" size={16} /> Activate
                   </button>
 
                 )}
@@ -249,16 +322,7 @@ export default function ElectionsPage() {
 
                   <button
                     onClick={() => handleClose(election.id)}
-                    style={{
-                      marginLeft: 10,
-                      background: "#fd7e14",
-                      color: "#fff",
-                      border: "none",
-                      padding: "7px 14px",
-                      borderRadius: 8,
-                      cursor: "pointer",
-                      fontWeight: "600"
-                    }}
+                    className="btn btn-primary"
                   >
                     Close
                   </button>
@@ -279,15 +343,16 @@ export default function ElectionsPage() {
                 {election.status !== 'closed' && (
                   <button
                     onClick={() => handleDelete(election.id)}
-                    className="danger-button"
+                    className="danger-button soft-danger-button"
                   >
                     Delete
                   </button>
                 )}
 
                 </div>
+                )}
 
-              </td>
+              </td>}
 
             </tr>
 
@@ -350,6 +415,7 @@ export default function ElectionsPage() {
             background: "#fff",
             padding: 22,
             borderRadius: 12,
+            border: "1px solid #c7d4e8",
             borderLeft: "5px solid var(--primary-2)",
             boxShadow: "0 3px 10px rgba(0,0,0,.08)"
           }}
@@ -365,13 +431,14 @@ export default function ElectionsPage() {
             background: "#fff",
             padding: 22,
             borderRadius: 12,
+            border: "1px solid #c7d4e8",
             borderLeft: "5px solid var(--accent)",
             boxShadow: "0 3px 10px rgba(0,0,0,.08)"
           }}
         >
           <h3>Active</h3>
           <h1 style={{ color: "var(--accent)" }}>
-            {activeElections.length}
+            {activeElectionCount}
           </h1>
         </div>
 
@@ -380,7 +447,24 @@ export default function ElectionsPage() {
             background: "#fff",
             padding: 22,
             borderRadius: 12,
+            border: "1px solid #c7d4e8",
             borderLeft: "5px solid var(--primary-2)",
+            boxShadow: "0 3px 10px rgba(0,0,0,.08)"
+          }}
+        >
+          <h3>Draft</h3>
+          <h1 style={{ color: "var(--success)" }}>
+            {draftElectionCount}
+          </h1>
+        </div>
+
+        <div
+          style={{
+            background: "#fff",
+            padding: 22,
+            borderRadius: 12,
+            border: "1px solid #c7d4e8",
+            borderLeft: "5px solid var(--accent)",
             boxShadow: "0 3px 10px rgba(0,0,0,.08)"
           }}
         >
@@ -397,6 +481,7 @@ export default function ElectionsPage() {
           background: "#fff",
           padding: 25,
           borderRadius: 12,
+          border: "1px solid #c7d4e8",
           boxShadow: "0 3px 10px rgba(0,0,0,.08)",
           marginBottom: 35,
           maxWidth: "650px",
@@ -430,21 +515,12 @@ export default function ElectionsPage() {
             }}
           />
 
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            style={{
-              width: "140px",
-            }}
-          >
-            <option value="draft">Draft</option>
-            <option value="active">Active</option>
-          </select>
-
           <button
             type="submit"
+            className="election-create-button"
             disabled={isSubmitting}
           >
+            <span className="election-create-icon" aria-hidden="true">+</span>
             {isSubmitting ? "Creating..." : "Create Election"}
           </button>
 
@@ -452,17 +528,17 @@ export default function ElectionsPage() {
 
       </div>
 
-      <div style={{ marginBottom: 45 }}>
+      <section className="election-list-panel" style={{ marginBottom: 35 }}>
 
         <h2 style={{ marginBottom: 15 }}>
           Current Elections
         </h2>
 
-        {renderTable(activeElections, activePage, setActivePage)}
+        {renderTable(activeElections, activePage, setActivePage, 'manage')}
 
-      </div>
+      </section>
 
-      <div>
+      <section className="election-list-panel">
 
         <h2 style={{ marginBottom: 15 }}>
           Election History
@@ -470,7 +546,7 @@ export default function ElectionsPage() {
 
         {renderTable(historyElections, historyPage, setHistoryPage)}
 
-      </div>
+      </section>
 
       {(selectedElection || isLoadingDetails || detailsError) && (
         <div className="election-details-overlay" role="presentation" onClick={() => setSelectedElection(null)}>
@@ -489,7 +565,7 @@ export default function ElectionsPage() {
                 </h2>
               </div>
               <button type="button" className="election-details-close" onClick={() => setSelectedElection(null)} aria-label="Close details">
-                ×
+                <Icon name="close" size={18} />
               </button>
             </div>
 

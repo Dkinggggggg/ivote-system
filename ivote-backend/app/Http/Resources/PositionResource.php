@@ -12,6 +12,9 @@ class PositionResource extends JsonResource
             'id' => $this->id,
             'election_id' => $this->election_id,
             'name' => $this->name,
+            'department_serial_code' => $this->department_serial_code,
+            'category_id' => $this->category_id,
+            'category_name' => $this->whenLoaded('category', fn () => $this->category?->name),
             'vote_for_count' => $this->vote_for_count,
             'display_order' => $this->display_order,
 

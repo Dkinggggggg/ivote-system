@@ -1,0 +1,106 @@
+import {
+  ArrowLeft,
+  CalendarDays,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CircleHelp,
+  ClipboardCheck,
+  ClipboardList,
+  Copy,
+  Download,
+  Eye,
+  EyeOff,
+  FileCheck2,
+  FileText,
+  Flag,
+  Home,
+  LayoutDashboard,
+  List,
+  LockKeyhole,
+  Menu,
+  Moon,
+  Pencil,
+  Plus,
+  Printer,
+  Search,
+  ScanLine,
+  ScrollText,
+  Settings,
+  Star,
+  Sun,
+  Trash2,
+  UserRound,
+  UsersRound,
+  Vote,
+  X,
+} from 'lucide-react';
+
+const icons = {
+  add: Plus,
+  arrowLeft: ArrowLeft,
+  audit: ScrollText,
+  back: ArrowLeft,
+  ballots: FileCheck2,
+  calendar: CalendarDays,
+  candidates: UsersRound,
+  check: Check,
+  chevronDown: ChevronDown,
+  chevronRight: ChevronRight,
+  close: X,
+  clipboard: ClipboardList,
+  copy: Copy,
+  dashboard: LayoutDashboard,
+  delete: Trash2,
+  download: Download,
+  edit: Pencil,
+  election: Vote,
+  electionManagement: Vote,
+  eye: Eye,
+  eyeOff: EyeOff,
+  flag: Flag,
+  home: Home,
+  list: List,
+  lock: LockKeyhole,
+  menu: Menu,
+  moon: Moon,
+  parties: Flag,
+  pencil: Pencil,
+  plus: Plus,
+  print: Printer,
+  reports: FileText,
+  review: ClipboardCheck,
+  save: Check,
+  scan: ScanLine,
+  search: Search,
+  settings: Settings,
+  sun: Sun,
+  star: Star,
+  trash: Trash2,
+  user: UserRound,
+  users: UsersRound,
+  'Audit Logs': ScrollText,
+  Ballots: FileCheck2,
+  Dashboard: LayoutDashboard,
+  'Election Management': Vote,
+  Reports: FileText,
+  Scanner: ScanLine,
+  Settings,
+  'Scanner Monitoring': ScanLine,
+  Users: UsersRound,
+};
+
+export default function Icon({ name, size = 18, strokeWidth = 1.8, className, ...props }) {
+  const IconComponent = icons[name] || CircleHelp;
+
+  return (
+    <IconComponent
+      size={size}
+      strokeWidth={strokeWidth}
+      className={className}
+      aria-hidden="true"
+      focusable="false"
+      {...props}
+    />
+  );
+}

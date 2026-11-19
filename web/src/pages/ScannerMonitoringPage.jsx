@@ -137,7 +137,7 @@ export default function ScannerMonitoringPage() {
         </div>
 
         <button
-          className="primary-button"
+          className="btn btn-primary"
           onClick={loadScans}
         >
           Refresh

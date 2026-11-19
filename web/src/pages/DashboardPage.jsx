@@ -1,11 +1,17 @@
 import React, { useEffect, useState } from "react";
 import apiClient from "../api/apiClient";
+import Icon from "../components/Icon";
 import LoadingSkeleton from "../components/LoadingSkeleton";
+import { useAuth } from "../context/AuthContext";
 
 export default function DashboardPage() {
 
+  const { user } = useAuth();
   const [elections, setElections] = useState([]);
   const [selectedElection, setSelectedElection] = useState("");
+  const [selectedPrecinct, setSelectedPrecinct] = useState("all");
+  const [selectedYearLevel, setSelectedYearLevel] = useState("all");
+  const [precinctOptions, setPrecinctOptions] = useState(["all"]);
   const [election, setElection] = useState(null);
   const [results, setResults] = useState({});
   const [error, setError] = useState(null);
@@ -36,6 +42,43 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    if (!user) return;
+
+    if (user.role === "committee_officer") {
+      setSelectedPrecinct(user.precinct || "all");
+      setSelectedYearLevel(user.year_level || "all");
+      return;
+    }
+
+    setSelectedPrecinct("all");
+    setSelectedYearLevel("all");
+  }, [user]);
+
+  useEffect(() => {
+    if (user?.role !== "admin") {
+      setPrecinctOptions([user?.precinct || "all"]);
+      return;
+    }
+
+    async function loadPrecinctOptions() {
+      try {
+        const { data } = await apiClient.get("/users");
+        const precincts = [...new Set(
+          (data.data || [])
+            .filter((entry) => entry.role === "committee_officer" && entry.precinct)
+            .map((entry) => entry.precinct)
+        )].sort();
+
+        setPrecinctOptions(["all", ...precincts]);
+      } catch {
+        setPrecinctOptions(["all"]);
+      }
+    }
+
+    loadPrecinctOptions();
+  }, [user?.role]);
+
+  useEffect(() => {
 
     let interval;
 
@@ -44,29 +87,51 @@ export default function DashboardPage() {
       try {
 
         const { data } = await apiClient.get("/elections");
+        const electionList = (data.data || []).filter((item) => item.status !== "closed");
 
-        setElections(data.data);
+        setElections(electionList);
 
-        let electionId = selectedElection;
-
-        if (!electionId && data.data.length > 0) {
-
-          electionId = String(data.data[0].id);
-          setSelectedElection(electionId);
-
-        }
-
-        if (!electionId) return;
-
-        const selected = data.data.find(
-          e => String(e.id) === String(electionId)
+        const selectedElectionExists = electionList.some(
+          (item) => String(item.id) === String(selectedElection)
         );
 
-        setElection(selected);
+        if (!selectedElection || !selectedElectionExists) {
+          if (selectedElection) setSelectedElection("");
+          setElection(null);
+          setResults({});
+          setError(null);
+          return;
+        }
+
+        const selected = electionList.find(
+          (item) => String(item.id) === String(selectedElection)
+        );
+
+        setElection(selected || null);
+
+        const params = {};
+        const effectivePrecinct = user?.role === "committee_officer"
+          ? user.precinct || "all"
+          : selectedPrecinct;
+
+        if (effectivePrecinct && effectivePrecinct !== "all") {
+          params.precinct = effectivePrecinct;
+        }
+
+        if (selectedYearLevel && selectedYearLevel !== "all") {
+          params.year_level = selectedYearLevel;
+        }
+
+        if (user?.role === "committee_officer") {
+          if (selectedYearLevel && selectedYearLevel !== "all") {
+            params.year_level = selectedYearLevel;
+          }
+        }
 
         const { data: resultData } =
           await apiClient.get(
-            `/elections/${electionId}/results`
+            `/elections/${selectedElection}/results`,
+            { params }
           );
 
         setResults(resultData.data);
@@ -93,7 +158,7 @@ export default function DashboardPage() {
 
     return () => clearInterval(interval);
 
-  }, [selectedElection]);
+  }, [selectedElection, selectedPrecinct, selectedYearLevel, user]);
 
   if (error) return <p>{error}</p>;
   function copyPublicLink() {
@@ -115,8 +180,6 @@ export default function DashboardPage() {
 }
 
   if (isLoading && !election) return <LoadingSkeleton variant="dashboard" label="Loading dashboard" />;
-  if (!election) return <p>No elections available.</p>;
-
   const ballotStats = results.ballotStats || {
     issued: 0,
     counted: 0,
@@ -124,7 +187,7 @@ export default function DashboardPage() {
   };
 
   const totalCandidates =
-    election.positions?.reduce(
+    election?.positions?.reduce(
       (total, position) =>
         total + position.candidates.length,
       0
@@ -209,14 +272,57 @@ export default function DashboardPage() {
           }}
         >
 
-          <div style={{ color: colors.textMuted, fontSize: "12px", marginBottom: "8px" }}>
-            Selected Election
-          </div>
-
           <select
             className="form-control"
             value={selectedElection}
+            disabled={elections.length === 0}
             onChange={(e) => setSelectedElection(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: "8px",
+              background: colors.surfaceSoft,
+              border: `1px solid ${colors.border}`,
+              color: "var(--text)",
+              marginBottom: "10px",
+            }}
+          >
+            <option value="" disabled>
+              Select Election
+            </option>
+            {elections.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.title}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="form-control"
+            value={selectedPrecinct}
+            disabled={user?.role !== "admin" || precinctOptions.length <= 1}
+            onChange={(e) => setSelectedPrecinct(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: "8px",
+              background: colors.surfaceSoft,
+              border: `1px solid ${colors.border}`,
+              color: "var(--text)",
+              marginBottom: "10px",
+            }}
+          >
+            {precinctOptions.map((option) => (
+              <option key={option} value={option}>
+                {option === "all" ? "All Precincts" : option}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="form-control"
+            value={selectedYearLevel}
+            onChange={(e) => setSelectedYearLevel(e.target.value)}
             style={{
               width: "100%",
               padding: "10px 12px",
@@ -226,17 +332,18 @@ export default function DashboardPage() {
               color: "var(--text)",
             }}
           >
-            {elections.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.title}
-              </option>
-            ))}
+            <option value="all">All Year Levels</option>
+            <option value="2nd Year">2nd Year</option>
+            <option value="3rd Year">3rd Year</option>
+            <option value="4th Year">4th Year</option>
           </select>
 
         </div>
 
       </div>
 
+      {election ? (
+        <>
       <div
         className="dashboard-stat-grid"
         style={{
@@ -400,18 +507,10 @@ export default function DashboardPage() {
             <h3 style={{ margin: 0 }}>Public Results Portal</h3>
 
             <button
+              className="dashboard-copy-link-button"
               onClick={copyPublicLink}
-              style={{
-                background: colors.primary,
-                color: "#fff",
-                border: "none",
-                borderRadius: "8px",
-                padding: "10px 16px",
-                cursor: "pointer",
-                fontWeight: 600,
-              }}
             >
-              Copy Link
+              <Icon name="copy" size={16} /> Copy Link
             </button>
 
           </div>
@@ -470,6 +569,24 @@ export default function DashboardPage() {
         </div>
 
       </div>
+
+        </>
+      ) : (
+        <div
+          className="dashboard-panel"
+          style={{
+            maxWidth: "1200px",
+            padding: "20px 24px",
+            background: colors.cardBackground,
+            border: `1px solid ${colors.border}`,
+            color: colors.textMuted,
+          }}
+        >
+          {elections.length > 0
+            ? "Select an election to view dashboard details."
+            : "No elections available."}
+        </div>
+      )}
 
     </div>
 

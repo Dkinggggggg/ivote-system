@@ -1,5 +1,27 @@
 .results-main{margin-left:0!important}
 .results-portal{display:block!important}
+.department-turnout{max-width:1120px;margin:0 auto 16px;padding:18px;border:1px solid #d4e1ee;border-top:4px solid #16845b;background:#fff}
+.department-turnout-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.department-turnout-heading p{margin:0 0 3px;color:#16845b;font-size:10px;font-weight:700;text-transform:uppercase}
+.department-turnout-heading h2{margin:0;color:#193a68;font-size:19px}
+.department-turnout-overall{color:#16845b;font-size:15px;white-space:nowrap}
+.department-turnout-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.department-turnout-summary>div{display:grid;gap:5px;padding:11px 12px;border-left:3px solid #2c6fbe;background:#f3f7fc}
+.department-turnout-summary>div:nth-child(2){border-left-color:#16845b}
+.department-turnout-summary>div:nth-child(3){border-left-color:#c18a12}
+.department-turnout-summary span{color:#6d86a5;font-size:11px}
+.department-turnout-summary strong{color:#193a68;font-size:20px}
+.department-turnout-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:10px}
+.department-turnout-card{min-width:0;padding:12px;border:1px solid #e1eaf3;background:#fff}
+.department-turnout-card-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+.department-turnout-card-heading h3{margin:0;color:#193a68;font-size:14px;overflow-wrap:anywhere}
+.department-turnout-card-heading strong{color:#16845b;font-size:14px;white-space:nowrap}
+.department-turnout-progress{height:8px;overflow:hidden;background:#e6edf5}
+.department-turnout-progress span{display:block;height:100%;background:#16845b;transition:width .3s ease}
+.department-turnout-card p{margin:8px 0 0;color:#6d86a5;font-size:11px}
+.department-turnout-card p strong{color:#193a68}
+.department-turnout-empty{margin:0;color:#6d86a5;font-size:12px}
+@media(max-width:620px){.department-turnout{padding:14px 12px}.department-turnout-heading h2{font-size:16px}.department-turnout-overall{font-size:13px}.department-turnout-summary{grid-template-columns:1fr}.department-turnout-summary>div{grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px}.department-turnout-summary strong{font-size:18px}.department-turnout-grid{grid-template-columns:1fr}}
 .results-hero,#live-election,#results{scroll-margin-top:76px}
 .public-results-header{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:24px;width:100%;min-height:64px;padding:0 clamp(18px,4vw,48px);background:#12345b;color:#fff;border-bottom:1px solid rgba(255,255,255,.14)}
 .public-results-brand{display:flex;align-items:center;gap:10px;color:#fff!important;text-decoration:none!important}

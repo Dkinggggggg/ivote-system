@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { QRCodeCanvas } from 'qrcode.react';
 import apiClient from '../api/apiClient';
 import PaginationControls from '../components/PaginationControls';
 import LoadingSkeleton from '../components/LoadingSkeleton';
@@ -8,7 +7,6 @@ import './BallotsPage.css';
 import logo from '../assets/logo.png';
 import { parseBallotSerial, positionsForBallot } from '../utils/ballotPositions';
 
-const departments = ['BSIT', 'BSHM', 'BSE', 'BTVTED', 'BINDTECH'];
 const yearLevels = ['2nd Year', '3rd Year', '4th Year'];
 
 export default function BallotsPage() {
@@ -17,11 +15,14 @@ export default function BallotsPage() {
 
   const [ballots, setBallots] = useState([]);
   const [elections, setElections] = useState([]);
+  const [departments, setDepartments] = useState([]);
 
   const [electionId, setElectionId] = useState('');
   const [batchSize, setBatchSize] = useState(100);
-  const [program, setProgram] = useState('BSIT');
-  const [yearLevel, setYearLevel] = useState('2nd Year');
+  const [program, setProgram] = useState('');
+  const [yearLevel, setYearLevel] = useState('');
+  const [ballotDepartmentFilter, setBallotDepartmentFilter] = useState('');
+  const [ballotYearFilter, setBallotYearFilter] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -44,30 +45,61 @@ export default function BallotsPage() {
   }, []);
 
   useEffect(() => {
+    let active = true;
 
-    if (!selectAllRef.current) return;
+    if (!electionId) {
+      setDepartments([]);
+      setProgram('');
+      return () => {
+        active = false;
+      };
+    }
 
-    const allSelected =
-      ballots.length > 0 &&
-      selectedBallots.length === ballots.length;
+    apiClient.get(`/elections/${electionId}/positions`)
+      .then(({ data }) => {
+        if (!active) return;
 
-    const someSelected =
-      selectedBallots.length > 0 &&
-      !allSelected;
+        const options = (data.data || [])
+          .filter((position) => (
+            (position.category_name === 'Governors' || position.name.startsWith('Governor - '))
+            && position.department_serial_code
+          ))
+          .map((position) => ({
+            name: position.name.startsWith('Governor - ')
+              ? position.name.slice('Governor - '.length).trim()
+              : position.name.trim(),
+            code: String(position.department_serial_code).padStart(2, '0'),
+          }))
+          .filter((department) => department.name);
 
-    selectAllRef.current.indeterminate = someSelected;
+        setDepartments(options);
+        setError('');
+      })
+      .catch((loadError) => {
+        console.error(loadError);
+        if (active) {
+          setDepartments([]);
+          setProgram('');
+          setError('Unable to load departments for this election.');
+        }
+      });
 
-  }, [selectedBallots, ballots]);
+    return () => {
+      active = false;
+    };
+  }, [electionId]);
 
   async function loadElections() {
 
     const { data } = await apiClient.get('/elections');
+    const availableElections = data.data.filter((election) => election.status !== 'closed');
 
-    setElections(data.data);
-
-    if (data.data.length > 0 && !electionId) {
-      setElectionId(String(data.data[0].id));
-    }
+    setElections(availableElections);
+    setElectionId((currentElectionId) => (
+      availableElections.some((election) => String(election.id) === currentElectionId)
+        ? currentElectionId
+        : ''
+    ));
 
   }
 
@@ -88,6 +120,16 @@ export default function BallotsPage() {
 
     if (!electionId) {
       setError('Please select an election.');
+      return;
+    }
+
+    if (!departments.some((department) => department.name === program)) {
+      setError(program ? 'This election has no available Governor departments.' : 'Please select a department.');
+      return;
+    }
+
+    if (!yearLevel) {
+      setError('Please select the representative year on the ballot.');
       return;
     }
 
@@ -123,11 +165,15 @@ export default function BallotsPage() {
 
     if (e.target.checked) {
 
-      setSelectedBallots(ballots.map(b => b.id));
+      setSelectedBallots((selected) => Array.from(new Set([
+        ...selected,
+        ...filteredBallots.map((ballot) => ballot.id),
+      ])));
 
     } else {
 
-      setSelectedBallots([]);
+      const filteredIds = new Set(filteredBallots.map((ballot) => ballot.id));
+      setSelectedBallots((selected) => selected.filter((id) => !filteredIds.has(id)));
 
     }
 
@@ -269,28 +315,30 @@ export default function BallotsPage() {
   const selectedElectionBallots = selectedElectionId === null
     ? ballots
     : ballots.filter((ballot) => Number(ballot.election_id ?? ballot.election?.id) === selectedElectionId);
-  const printedBallots = selectedElectionBallots.filter((ballot) => ballot.printed_at);
-  const remainingBallots = selectedElectionBallots.length - printedBallots.length;
-  const serialPrefix = `${String(departments.indexOf(program) + 1).padStart(2, '0')}${String(yearLevels.indexOf(yearLevel) + 2).padStart(3, '0')}`;
-  const loadedHighestSerial = ballots.reduce((highest, ballot) => {
-    const scope = parseBallotSerial(ballot.serial_number);
-    if (scope?.department !== program || scope?.yearLevel !== yearLevel) return highest;
-    return Math.max(highest, Number(scope.sequence));
-  }, 0);
-  const nextSerialNumber = `${serialPrefix}${String(loadedHighestSerial + 1).padStart(4, '0')}`;
+  const selectedElectionPrintedBallots = selectedElectionBallots.filter((ballot) => ballot.printed_at);
+  const remainingBallots = selectedElectionBallots.length - selectedElectionPrintedBallots.length;
+  const selectedDepartment = departments.find((department) => department.name === program);
+  const departmentTotalBallots = selectedDepartment
+    ? selectedElectionBallots.filter((ballot) => (
+      parseBallotSerial(ballot.serial_number)?.departmentCode === selectedDepartment.code
+    )).length
+    : 0;
+  const ballotDepartments = [...new Set(ballots.map((ballot) => ballot.program).filter(Boolean))].sort();
+  const ballotYearLevels = [...new Set(ballots
+    .filter((ballot) => !ballotDepartmentFilter || ballot.program === ballotDepartmentFilter)
+    .map((ballot) => ballot.year_level)
+    .filter(Boolean))]
+    .sort((first, second) => yearLevels.indexOf(first) - yearLevels.indexOf(second));
 
-  const filteredBallots = selectedElectionBallots.filter(ballot => {
+  const filteredBallots = ballots.filter(ballot => {
+    const matchesDepartment = !ballotDepartmentFilter || ballot.program === ballotDepartmentFilter;
+    const matchesYearLevel = !ballotYearFilter || ballot.year_level === ballotYearFilter;
 
-    const matchesSearch =
-  (
-    ballot.serial_number +
-    " " +
-    (ballot.election?.title || "")
-  )
-    .toLowerCase()
-    .includes(search.toLowerCase());
+    const matchesSearch = `${ballot.serial_number} ${ballot.election?.title || ''}`
+      .toLowerCase()
+      .includes(search.toLowerCase());
 
-return matchesSearch;
+    return matchesDepartment && matchesYearLevel && matchesSearch;
 
   });
 
@@ -303,8 +351,20 @@ return matchesSearch;
   const endItem = Math.min(startIndex + pageSize, filteredBallots.length);
 
   useEffect(() => {
+    if (!selectAllRef.current) return;
+
+    const selectedVisibleCount = filteredBallots.filter((ballot) => (
+      selectedBallots.includes(ballot.id)
+    )).length;
+
+    selectAllRef.current.indeterminate = selectedVisibleCount > 0
+      && selectedVisibleCount < filteredBallots.length;
+  }, [filteredBallots, selectedBallots]);
+
+  useEffect(() => {
     setCurrentPage(1);
-  }, [search]);
+    setSelectedBallots([]);
+  }, [ballotDepartmentFilter, ballotYearFilter, search]);
 
   useEffect(() => {
     if (!pdfMode || selectedBallots.length === 0) return;
@@ -392,10 +452,6 @@ return matchesSearch;
 
                     <div className="serial-number">
                       <strong>Ballot Serial No.:</strong> {ballot.serial_number}
-                    </div>
-
-                    <div className="qr-small">
-                      <QRCodeCanvas value={ballot.serial_number} size={40} />
                     </div>
 
                     <p className="instruction">Vote wisely!</p>
@@ -487,7 +543,7 @@ return (
       >
         <h3>Printed</h3>
         <h1 style={{ color: "var(--accent)" }}>
-          {printedBallots.length}
+          {selectedElectionPrintedBallots.length}
         </h1>
       </div>
 
@@ -515,10 +571,10 @@ return (
           boxShadow: "0 3px 10px rgba(0,0,0,.08)"
         }}
       >
-        <h3>Next Serial Number</h3>
-        <h2 style={{ color: "var(--accent)" }}>
-          {nextSerialNumber}
-        </h2>
+        <h3>Department Total Ballots</h3>
+        <h1 style={{ color: "var(--accent)" }}>
+          {departmentTotalBallots}
+        </h1>
       </div>
 
     </div>
@@ -544,15 +600,22 @@ return (
 
         <select
           value={electionId}
-          onChange={(e) => setElectionId(e.target.value)}
+          onChange={(e) => {
+            setElectionId(e.target.value);
+            setProgram('');
+            setYearLevel('');
+          }}
+          disabled={elections.length === 0}
+          required
           style={{
             maxWidth: "420px",
             minWidth: "100px"
           }}
         >
-
+          <option value="" disabled>
+            {elections.length === 0 ? 'No open elections available' : 'Select Election'}
+          </option>
           {elections.map(election => (
-
             <option
               key={election.id}
               value={election.id}
@@ -566,16 +629,28 @@ return (
 
         <label>
           Department
-          <select value={program} onChange={(e) => setProgram(e.target.value)}>
+          <select
+            value={program}
+            onChange={(e) => setProgram(e.target.value)}
+            disabled={departments.length === 0}
+            required
+          >
+            <option value="" disabled>Select a department</option>
             {departments.map((department) => (
-              <option key={department} value={department}>{department}</option>
+              <option key={department.code} value={department.name}>{department.name}</option>
             ))}
           </select>
         </label>
 
         <label>
-          Batch Representative Year
-          <select value={yearLevel} onChange={(e) => setYearLevel(e.target.value)}>
+          Representative Year on Ballot
+          <select
+            value={yearLevel}
+            onChange={(e) => setYearLevel(e.target.value)}
+            disabled={!electionId || !program}
+            required
+          >
+            <option value="" disabled>Select a year level</option>
             {yearLevels.map((year) => (
               <option key={year} value={year}>{year}</option>
             ))}
@@ -583,7 +658,7 @@ return (
         </label>
 
         <label>
-          Batch Size
+          Number of Ballots to Generate
           <input
             type="number"
             min="1"
@@ -598,7 +673,8 @@ return (
 
         <button
           type="submit"
-          disabled={loading}
+          className="upload-photo-style-button"
+          disabled={loading || !electionId}
         >
           {loading
             ? "Generating..."
@@ -607,10 +683,11 @@ return (
 
         <button
           type="button"
+          className="upload-photo-style-button"
           onClick={handlePrintNextBatch}
           disabled={!electionId || loading}
         >
-          Print Next Batch
+          Print Generated Ballots
         </button>
 
       </form>
@@ -637,6 +714,35 @@ return (
           alignItems: "center"
         }}
       >
+
+        <label className="ballot-list-filter">
+          <span>Department</span>
+          <select
+            value={ballotDepartmentFilter}
+            onChange={(e) => {
+              setBallotDepartmentFilter(e.target.value);
+              setBallotYearFilter('');
+            }}
+          >
+            <option value="">All departments</option>
+            {ballotDepartments.map((department) => (
+              <option key={department} value={department}>{department}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="ballot-list-filter">
+          <span>Year level</span>
+          <select
+            value={ballotYearFilter}
+            onChange={(e) => setBallotYearFilter(e.target.value)}
+          >
+            <option value="">All year levels</option>
+            {ballotYearLevels.map((year) => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+        </label>
 
         <input
           type="text"
@@ -681,15 +787,15 @@ return (
 
           <th>
 
-            <input
-              ref={selectAllRef}
-              type="checkbox"
-              checked={
-                ballots.length > 0 &&
-                selectedBallots.length === ballots.length
-              }
-              onChange={toggleSelectAll}
-            />
+            {filteredBallots.length > 0 && (
+              <input
+                ref={selectAllRef}
+                type="checkbox"
+                checked={filteredBallots.every((ballot) => selectedBallots.includes(ballot.id))}
+                onChange={toggleSelectAll}
+                aria-label="Select all printed ballots"
+              />
+            )}
 
           </th>
 
@@ -759,6 +865,7 @@ return (
                 <td>
 
                   <button
+                    className="upload-photo-style-button"
                     onClick={() =>
                       navigate(`/ballots/${ballot.id}/print`)
                     }

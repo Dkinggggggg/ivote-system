@@ -8,6 +8,8 @@ use App\Models\Ballot;
 use App\Models\Candidate;
 use App\Models\Election;
 use App\Models\Position;
+use App\Models\PositionCategory;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -29,18 +31,24 @@ class ReportController extends Controller
     public function winners(Request $request)
     {
         $election = $this->getElection($request);
+        $precinct = $request->query('precinct');
+        $precinctAssignments = $this->precinctAssignments($precinct);
+        PositionCategory::provisionDefaultsForElection($election->id);
 
-        $positions = Position::where('election_id', $election->id)
+        $positions = Position::with('category')
+            ->where('election_id', $election->id)
+            ->orderBy('category_id')
             ->orderBy('display_order')
             ->get();
 
         $results = [];
 
         foreach ($positions as $position) {
-            array_push($results, ...$this->winnerRowsForPosition($position));
+            array_push($results, ...$this->winnerRowsForPosition($position, $precinct, $precinctAssignments));
         }
 
         $electionBallots = Ballot::where('election_id', $election->id);
+        $this->applyPrecinctScope($electionBallots, $precinct, $precinctAssignments);
 
         $totalBallots = $electionBallots->count();
 
@@ -53,6 +61,7 @@ class ReportController extends Controller
 
         return response()->json([
             'election'        => $election->title,
+            'precinct'        => $precinct ?: 'All Precincts',
             'status'          => ucfirst($election->status),
             'total_ballots'   => $totalBallots,
             'valid_ballots'   => $validBallots,
@@ -66,12 +75,18 @@ class ReportController extends Controller
     private function resultsCsv(Request $request): StreamedResponse
     {
         $election = $this->getElection($request);
+        $precinct = $request->query('precinct');
+        $precinctAssignments = $this->precinctAssignments($precinct);
+        PositionCategory::provisionDefaultsForElection($election->id);
 
-        $positions = Position::where('election_id', $election->id)
+        $positions = Position::with('category')
+            ->where('election_id', $election->id)
+            ->orderBy('category_id')
             ->orderBy('display_order')
             ->get();
 
         $electionBallots = Ballot::where('election_id', $election->id);
+        $this->applyPrecinctScope($electionBallots, $precinct, $precinctAssignments);
 
         $totalBallots = $electionBallots->count();
 
@@ -86,6 +101,8 @@ class ReportController extends Controller
             'official-election-results.csv',
             function ($handle) use (
                 $election,
+                $precinct,
+                $precinctAssignments,
                 $positions,
                 $totalBallots,
                 $validBallots,
@@ -96,10 +113,12 @@ class ReportController extends Controller
                 fputcsv($handle, []);
 
                 fputcsv($handle, ['Election', $election->title]);
+                fputcsv($handle, ['Precinct', $precinct ?: 'All Precincts']);
                 fputcsv($handle, ['Status', ucfirst($election->status)]);
                 fputcsv($handle, []);
 
                 fputcsv($handle, [
+                    'Category',
                     'Position',
                     'Standing',
                     'Winner',
@@ -108,8 +127,9 @@ class ReportController extends Controller
                 ]);
 
                 foreach ($positions as $position) {
-                    foreach ($this->winnerRowsForPosition($position) as $row) {
+                    foreach ($this->winnerRowsForPosition($position, $precinct, $precinctAssignments) as $row) {
                         fputcsv($handle, [
+                            $row['category'],
                             $row['position'],
                             $row['standing'] ?? '',
                             $row['winner'],
@@ -129,14 +149,20 @@ class ReportController extends Controller
         );
     }
 
-    private function winnerRowsForPosition(Position $position): array
+    private function winnerRowsForPosition(Position $position, ?string $precinct = null, array $precinctAssignments = []): array
     {
         $candidates = Candidate::where('position_id', $position->id)
             ->withCount([
-                'votes as total_votes' => function ($query) {
+                'votes as total_votes' => function ($query) use ($precinct, $precinctAssignments) {
                     $query->where('is_abstain', false)
-                        ->whereHas('ballotScan', function ($q) {
+                        ->whereHas('ballotScan', function ($q) use ($precinct, $precinctAssignments) {
                             $q->where('status', 'counted');
+
+                            if ($precinct) {
+                                $q->whereHas('ballot', function ($ballotQuery) use ($precinct, $precinctAssignments) {
+                                    $this->applyPrecinctScope($ballotQuery, $precinct, $precinctAssignments);
+                                });
+                            }
                         });
                 }
             ])
@@ -151,6 +177,7 @@ class ReportController extends Controller
 
         if ($candidatesWithVotes->isEmpty()) {
             return [[
+                'category' => $position->category?->name ?? 'Uncategorized',
                 'position' => $position->name,
                 'standing' => null,
                 'winner' => 'No Winner',
@@ -180,6 +207,7 @@ class ReportController extends Controller
             }
 
             $rows[] = [
+                'category' => $position->category?->name ?? 'Uncategorized',
                 'position' => $position->name,
                 'standing' => $standing,
                 'winner' => $candidate->name,
@@ -190,6 +218,52 @@ class ReportController extends Controller
         }
 
         return $rows;
+    }
+
+    private function precinctAssignments(?string $precinct): array
+    {
+        if (! $precinct || $precinct === 'all') {
+            return [];
+        }
+
+        return User::query()
+            ->where('role', 'committee_officer')
+            ->whereNotNull('program')
+            ->whereNotNull('year_level')
+            ->get(['role', 'program', 'year_level', 'precinct'])
+            ->filter(fn (User $user) => $user->precinct === $precinct)
+            ->map(fn (User $user) => [
+                'program' => $user->program,
+                'year_level' => $user->year_level,
+            ])
+            ->unique(fn (array $assignment) => $assignment['program'] . '|' . $assignment['year_level'])
+            ->values()
+            ->all();
+    }
+
+    private function applyPrecinctScope($query, ?string $precinct, array $precinctAssignments): void
+    {
+        if (! $precinct || $precinct === 'all') {
+            return;
+        }
+
+        $query->where(function ($scope) use ($precinct, $precinctAssignments) {
+            $scope->where('ballots.precinct', $precinct);
+
+            if ($precinctAssignments !== []) {
+                $scope->orWhere(function ($unassigned) use ($precinctAssignments) {
+                    $unassigned->whereNull('ballots.precinct')
+                        ->where(function ($assignments) use ($precinctAssignments) {
+                            foreach ($precinctAssignments as $assignment) {
+                                $assignments->orWhere(function ($pair) use ($assignment) {
+                                    $pair->where('ballots.program', $assignment['program'])
+                                        ->where('ballots.year_level', $assignment['year_level']);
+                                });
+                            }
+                        });
+                });
+            }
+        });
     }
 
     /**

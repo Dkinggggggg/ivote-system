@@ -9,6 +9,7 @@ use App\Models\AuditLog;
 use App\Repositories\Contracts\UserRepositoryInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Str;
 
 /**
  * Admin-only management of Admin/Committee Officer accounts
@@ -29,8 +30,10 @@ class UserController extends Controller
     public function store(StoreUserRequest $request)
     {
         $data = $request->validated();
-        $data['email'] = $data['username'];
-        unset($data['username']);
+        $temporaryPassword = $data['password'] ?? Str::random(24);
+        unset($data['password_confirmation']);
+        $data['password'] = $temporaryPassword;
+        $data['must_change_password'] = $data['role'] === 'admin';
         $data['is_active'] ??= true;
 
         $user = $this->users->create($data);
@@ -45,9 +48,10 @@ class UserController extends Controller
             'ip_address' => $request->ip(),
         ]);
 
-        return (new UserResource($user))
-            ->response()
-            ->setStatusCode(Response::HTTP_CREATED);
+        return response()->json([
+            'data' => new UserResource($user),
+            'temporary_password' => $temporaryPassword,
+        ], Response::HTTP_CREATED);
     }
 
     public function update(StoreUserRequest $request, int $id)
@@ -61,8 +65,6 @@ class UserController extends Controller
         );
 
         $data = $request->validated();
-        $data['email'] = $data['username'];
-        unset($data['username']);
 
         $updated = $this->users->update($user, $data);
 
@@ -73,6 +75,39 @@ class UserController extends Controller
             'user_id' => $request->user()->id,
             'action' => 'Update User',
             'description' => 'Updated user "' . $updated->name . '"',
+            'ip_address' => $request->ip(),
+        ]);
+
+        return new UserResource($updated);
+    }
+
+    public function setStatus(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'is_active' => ['required', 'boolean'],
+        ]);
+
+        $user = $this->users->find($id);
+
+        abort_if(
+            ! $user,
+            Response::HTTP_NOT_FOUND,
+            'User not found.'
+        );
+
+        abort_if(
+            $request->user()->id === $user->id && ! $data['is_active'],
+            Response::HTTP_UNPROCESSABLE_ENTITY,
+            'You cannot deactivate your own account.'
+        );
+
+        $updated = $this->users->update($user, $data);
+        $action = $data['is_active'] ? 'Reactivate User' : 'Deactivate User';
+
+        AuditLog::create([
+            'user_id' => $request->user()->id,
+            'action' => $action,
+            'description' => $action . ' "' . $updated->name . '"',
             'ip_address' => $request->ip(),
         ]);
 

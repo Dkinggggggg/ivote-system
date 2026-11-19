@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -37,7 +38,11 @@ class AuthController extends Controller
             ]);
         }
 
-        if (!Auth::once(['email' => $identifier, 'password' => $request->input('password')])) {
+        $user = User::where('email', $identifier)
+            ->orWhere('username', $identifier)
+            ->first();
+
+        if (!$user || !Auth::once(['email' => $user->email, 'password' => $request->input('password')])) {
 
             RateLimiter::hit($throttleKey, 60);
 
@@ -102,6 +107,50 @@ class AuthController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'role' => $user->role,
+                'precinct' => $user->precinct,
+                'program' => $user->program,
+                'year_level' => $user->year_level,
+                'must_change_password' => $user->role === 'admin' && $user->must_change_password,
+            ],
+        ]);
+    }
+
+    public function changePassword(Request $request)
+    {
+        $data = $request->validate([
+            'current_password' => ['required', 'string'],
+            'password' => ['required', 'string', 'min:12', 'confirmed', 'different:current_password'],
+        ]);
+        $user = $request->user();
+
+        if (! Hash::check($data['current_password'], $user->password)) {
+            throw ValidationException::withMessages([
+                'current_password' => 'The temporary password is incorrect.',
+            ]);
+        }
+
+        $user->forceFill([
+            'password' => Hash::make($data['password']),
+            'must_change_password' => false,
+        ])->save();
+
+        AuditLog::create([
+            'user_id' => $user->id,
+            'action' => 'Change Password',
+            'description' => $user->name . ' changed their password.',
+            'ip_address' => $request->ip(),
+        ]);
+
+        return response()->json([
+            'message' => 'Password changed successfully.',
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'role' => $user->role,
+                'precinct' => $user->precinct,
+                'program' => $user->program,
+                'year_level' => $user->year_level,
+                'must_change_password' => false,
             ],
         ]);
     }

@@ -66,7 +66,7 @@ export function AuthProvider({ children }) {
 
 
 
-  async function login(username, password, role) {
+  async function login(email, password, role) {
 
 
     setLoading(true);
@@ -75,7 +75,7 @@ export function AuthProvider({ children }) {
     try {
 
 
-      const response = await apiClient.post('/login', { username, password, role });
+      const response = await apiClient.post('/login', { email, password, role });
 
       const { token, user } = response.data;
 
@@ -100,45 +100,34 @@ export function AuthProvider({ children }) {
 
 
 
-  async function logout() {
-
-
+  async function logout(animationMs = 0) {
     try {
-
-
       await apiClient.post('/logout');
-
-
     } catch (error) {
-
-
-      console.log(
-        'Logout request failed:',
-        error
-      );
-
-
-    } finally {
-
-
-
-      localStorage.removeItem(
-        'ivote_token'
-      );
-
-
-      localStorage.removeItem(
-        'ivote_user'
-      );
-
-
-      setUser(null);
-
-
-
+      console.log('Logout request failed:', error);
     }
 
+    if (animationMs > 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, animationMs));
+    }
 
+    localStorage.removeItem('ivote_token');
+    localStorage.removeItem('ivote_user');
+    setUser(null);
+  }
+
+  async function changePassword(currentPassword, password, passwordConfirmation) {
+    const response = await apiClient.post('/change-password', {
+      current_password: currentPassword,
+      password,
+      password_confirmation: passwordConfirmation,
+    });
+    const updatedUser = response.data.user;
+
+    localStorage.setItem('ivote_user', JSON.stringify(updatedUser));
+    setUser(updatedUser);
+
+    return updatedUser;
   }
 
 
@@ -163,6 +152,8 @@ export function AuthProvider({ children }) {
         user,
 
         login,
+
+        changePassword,
 
         logout,
 

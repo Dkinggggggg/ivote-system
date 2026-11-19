@@ -3,6 +3,8 @@
 namespace App\Repositories\Eloquent;
 
 use App\Models\Ballot;
+use App\Models\Election;
+use App\Models\Position;
 use App\Repositories\Contracts\BallotRepositoryInterface;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\DB;
@@ -16,11 +18,19 @@ class BallotRepository implements BallotRepositoryInterface
         return Ballot::where('serial_number', $serialNumber)->first();
     }
 
-    public function claimForCounting(Ballot $ballot): bool
+    public function claimForCounting(Ballot $ballot, ?string $precinct = null): bool
     {
+        $payload = [
+            'status' => 'counted',
+        ];
+
+        if (! empty($precinct)) {
+            $payload['precinct'] = $precinct;
+        }
+
         $affectedRows = Ballot::where('id', $ballot->id)
             ->where('status', 'issued')
-            ->update(['status' => 'counted']);
+            ->update($payload);
 
         return $affectedRows === 1;
     }
@@ -49,21 +59,41 @@ class BallotRepository implements BallotRepositoryInterface
 
     public function generateForElection(int $electionId, int $quantity, string $program, string $yearLevel): EloquentCollection
     {
-        $departmentCodes = [
-            'BSIT' => '01',
-            'BSHM' => '02',
-            'BSE' => '03',
-            'BTVTED' => '04',
-            'BINDTECH' => '05',
-        ];
         $yearCodes = [
             '2nd Year' => '002',
             '3rd Year' => '003',
             '4th Year' => '004',
         ];
-        $prefix = $departmentCodes[$program] . $yearCodes[$yearLevel];
+        if (!isset($yearCodes[$yearLevel])) {
+            throw ValidationException::withMessages([
+                'year_level' => 'Select a supported batch representative year.',
+            ]);
+        }
 
-        return DB::transaction(function () use ($electionId, $quantity, $program, $yearLevel, $prefix) {
+        Position::provisionDefaultsForElection($electionId);
+
+        return DB::transaction(function () use ($electionId, $quantity, $program, $yearLevel, $yearCodes) {
+            Election::whereKey($electionId)->lockForUpdate()->firstOrFail();
+            $governor = Position::where('election_id', $electionId)
+                ->where(function ($query) use ($program) {
+                    $query->where('name', 'Governor - ' . $program)
+                        ->orWhere('name', $program);
+                })
+                ->where(function ($query) {
+                    $query->whereHas('category', fn ($categoryQuery) => $categoryQuery->where('name', 'Governors'))
+                        ->orWhere('name', 'like', 'Governor - %');
+                })
+                ->lockForUpdate()
+                ->first();
+
+            if (!$governor) {
+                throw ValidationException::withMessages([
+                    'program' => 'Select a department with a Governor position in this election.',
+                ]);
+            }
+
+            $governor->ensureDepartmentSerialCode();
+            $prefix = $governor->department_serial_code . $yearCodes[$yearLevel];
             $lastSerial = Ballot::query()
                 ->lockForUpdate()
                 ->where('serial_number', 'like', $prefix . '%')

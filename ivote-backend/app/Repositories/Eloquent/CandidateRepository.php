@@ -15,6 +15,14 @@ class CandidateRepository implements CandidateRepositoryInterface
             ->get();
     }
 
+    public function allForElection(int $electionId): Collection
+    {
+        return Candidate::whereHas('position', fn ($query) => $query->where('election_id', $electionId))
+            ->with('position:id,name')
+            ->orderBy('name')
+            ->get();
+    }
+
     public function find(int $id): ?Candidate
     {
         return Candidate::find($id);

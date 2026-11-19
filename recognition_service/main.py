@@ -45,6 +45,8 @@ def _build_template_from_election(election: dict) -> BallotTemplate:
     position_bubble_rois = {}
     vote_for_counts = {}
     position_names = {}
+    department_codes = {}
+    position_department_codes = {}
 
     top = 0.20
     row_height = 0.05
@@ -63,15 +65,26 @@ def _build_template_from_election(election: dict) -> BallotTemplate:
         position_bubble_rois[position["id"]] = rois
         vote_for_counts[position["id"]] = position.get("vote_for_count", 1)
         position_names[position["id"]] = position.get("name", "")
+        position_name = position.get("name", "")
+        department_serial_code = position.get("department_serial_code")
+        if department_serial_code:
+            department_code = str(department_serial_code).zfill(2)
+            position_department_codes[position["id"]] = department_code
+            department_codes[department_code] = (
+                position_name[len("Governor - "):].strip()
+                if position_name.startswith("Governor - ")
+                else position_name
+            )
 
         top += len(candidates) * row_height + block_gap
 
     return BallotTemplate(
-        serial_qr_roi=(0.75, 0.02, 0.20, 0.10),
         serial_text_roi=(0.75, 0.13, 0.20, 0.05),
         position_bubble_rois=position_bubble_rois,
         vote_for_counts=vote_for_counts,
         position_names=position_names,
+        department_codes=department_codes,
+        position_department_codes=position_department_codes,
     )
 
 
@@ -79,7 +92,6 @@ def _fallback_template() -> BallotTemplate:
     """Used only if the backend is unreachable, so the service still
     responds (as manual-review-worthy) instead of hard-failing."""
     return BallotTemplate(
-        serial_qr_roi=(0.75, 0.02, 0.20, 0.10),
         serial_text_roi=(0.75, 0.13, 0.20, 0.05),
         position_bubble_rois={
             1: [
@@ -97,7 +109,10 @@ def _load_template_for_election(election_id: int) -> BallotTemplate:
         return cached[1]
 
     try:
-        response = requests.get(f"{BACKEND_API_BASE_URL}/elections/active", timeout=5)
+        response = requests.get(
+            f"{BACKEND_API_BASE_URL}/elections/{election_id}/public-results",
+            timeout=5,
+        )
         response.raise_for_status()
         election = response.json()["data"]
         template = _build_template_from_election(election)

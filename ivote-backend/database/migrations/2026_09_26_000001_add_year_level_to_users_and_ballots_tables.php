@@ -9,12 +9,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->string('year_level', 20)->nullable()->after('program');
+            $table->string('year_level', 150)->nullable()->after('program');
             $table->index(['role', 'program', 'year_level']);
         });
 
         Schema::table('ballots', function (Blueprint $table) {
-            $table->string('year_level', 20)->nullable()->after('program');
+            $table->string('year_level', 150)->nullable()->after('program');
             $table->index(['election_id', 'program', 'year_level']);
         });
     }

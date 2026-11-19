@@ -1,6 +1,21 @@
-.finalize-election-button{border:1px solid #d89e00!important;background:var(--accent)!important;color:#1c2430!important;font-weight:700}
-.finalize-election-button:hover:not(:disabled){background:#ffd05c!important}
+.finalize-election-button{border:0!important;background:var(--primary-2)!important;color:#fff!important;border-radius:8px!important;font-weight:600;box-shadow:0 2px 6px rgba(61,108,153,.18);transition:background-color .12s ease,transform .08s ease,box-shadow .12s ease,opacity .12s ease}
+.finalize-election-button:hover:not(:disabled){background:var(--primary)!important;transform:translateY(-1px);box-shadow:0 6px 18px rgba(11,44,77,.2)}
 .finalize-election-button:focus-visible{outline:2px solid var(--primary-2);outline-offset:2px}
+.election-row-actions{display:flex;align-items:center;gap:7px;min-width:76px}
+.election-row-icon-button{display:grid;place-items:center;flex:none;width:30px;height:30px;padding:0;border:1px solid #d5e0fb;border-radius:5px;background:#f3f6fd;color:#2861dd;cursor:pointer}
+.election-row-icon-button:hover:not(:disabled){background:#e8efff;border-color:#a9c2ff}
+.election-row-icon-button.is-danger{border-color:#f5d6d6;background:#fff3f3;color:#d83b3b}
+.election-row-icon-button.is-danger:hover:not(:disabled){background:#ffe5e5;border-color:#e8aaaa}
+.election-row-icon-button.is-save{border-color:#cfe7d7;background:#f0faf3;color:#287a45;font-size:17px;font-weight:700}
+.election-row-icon-button:focus-visible{outline:2px solid #9db9ff;outline-offset:2px}
+.election-row-icon-button:disabled{opacity:.55;cursor:wait}
+.election-title-edit{display:flex;align-items:center;gap:6px;min-width:190px}
+.election-title-edit input{width:100%;min-width:80px;height:32px;padding:0 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font:inherit;font-size:13px}
+.app-content .election-create-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--primary-2);color:#fff;border:0;border-radius:8px!important;padding:10px 14px!important;box-shadow:0 2px 6px rgba(61,108,153,.18);transition:background-color .12s ease,transform .08s ease,box-shadow .12s ease,opacity .12s ease}
+.election-create-icon{font-size:20px;font-weight:400;line-height:1}
+.app-content .election-create-button:hover:not(:disabled){background:var(--primary);transform:translateY(-1px);box-shadow:0 6px 18px rgba(11,44,77,.2)}
+.election-list-panel{min-width:0;padding:20px;background:var(--surface);border:1px solid #c7d4e8;border-top:3px solid #245fe5;border-radius:8px;box-shadow:0 2px 8px rgba(27,54,94,.06)}
+.election-list-panel .table-shell{border:1px solid var(--border);border-radius:4px}
 .election-details-overlay{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(11,44,77,.42)}
 .election-details-dialog{width:min(720px,100%);max-height:min(760px,calc(100vh - 48px));overflow:auto;padding:26px;background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:0 18px 45px rgba(11,44,77,.2)}
 .election-details-header{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding-bottom:20px;border-bottom:1px solid var(--border)}

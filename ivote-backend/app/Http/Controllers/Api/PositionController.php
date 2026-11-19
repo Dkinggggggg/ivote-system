@@ -6,8 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StorePositionRequest;
 use App\Http\Resources\PositionResource;
 use App\Models\AuditLog;
+use App\Models\Election;
 use App\Models\Position;
+use App\Models\PositionCategory;
 use App\Repositories\Contracts\PositionRepositoryInterface;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Response;
 
 class PositionController extends Controller
@@ -19,10 +22,11 @@ class PositionController extends Controller
 
     public function index(int $electionId)
     {
+        PositionCategory::provisionDefaultsForElection($electionId);
         Position::provisionDefaultsForElection($electionId);
 
         return PositionResource::collection(
-            $this->positions->allForElection($electionId)->load('candidates')
+            $this->positions->allForElection($electionId)->load(['candidates', 'category'])
         );
     }
 
@@ -31,7 +35,13 @@ class PositionController extends Controller
         $data = $request->validated();
         $data['election_id'] = $electionId;
 
-        $position = $this->positions->create($data);
+        $position = DB::transaction(function () use ($data, $electionId) {
+            Election::whereKey($electionId)->lockForUpdate()->firstOrFail();
+            $position = $this->positions->create($data);
+            $position->ensureDepartmentSerialCode();
+
+            return $position;
+        });
 
         AuditLog::create([
             'user_id' => $request->user()->id,
@@ -55,10 +65,13 @@ class PositionController extends Controller
             'Position not found.'
         );
 
-        $updated = $this->positions->update(
-            $position,
-            $request->validated()
-        );
+        $updated = DB::transaction(function () use ($position, $request, $electionId) {
+            Election::whereKey($electionId)->lockForUpdate()->firstOrFail();
+            $updated = $this->positions->update($position, $request->validated());
+            $updated->ensureDepartmentSerialCode();
+
+            return $updated;
+        });
 
         AuditLog::create([
             'user_id' => $request->user()->id,

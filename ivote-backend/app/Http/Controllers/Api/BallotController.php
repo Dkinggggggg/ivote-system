@@ -116,7 +116,7 @@ class BallotController extends Controller
         $validated = $request->validate([
             'election_id' => ['required', 'integer', 'exists:elections,id'],
             'batch_size' => ['required', 'integer', 'min:1', 'max:100'],
-            'program' => ['required', 'in:BSIT,BSHM,BSE,BTVTED,BINDTECH'],
+            'program' => ['required', 'string', 'max:100'],
             'year_level' => ['required', 'in:2nd Year,3rd Year,4th Year'],
         ]);
 

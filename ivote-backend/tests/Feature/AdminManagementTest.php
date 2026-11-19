@@ -50,6 +50,50 @@ class AdminManagementTest extends TestCase
         $this->assertDatabaseHas('ballots', ['serial_number' => '010020005']);
     }
 
+    public function test_admin_can_generate_ballots_for_a_new_governor_department(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $election = Election::factory()->create(['created_by' => $admin->id]);
+        $token = $this->tokenFor($admin);
+        $this->withToken($token)->getJson("/api/elections/{$election->id}/positions")->assertOk();
+        $categories = $this->withToken($token)
+            ->getJson("/api/elections/{$election->id}/position-categories")
+            ->assertOk()
+            ->json('data');
+        $governorsCategoryId = collect($categories)->firstWhere('name', 'Governors')['id'];
+
+        $positionResponse = $this->withToken($token)
+            ->postJson("/api/elections/{$election->id}/positions", [
+                'name' => 'Nursing',
+                'vote_for_count' => 1,
+                'display_order' => 12,
+                'category_id' => $governorsCategoryId,
+            ]);
+
+        $positionResponse->assertCreated()
+            ->assertJsonPath('data.department_serial_code', '06');
+
+        $response = $this->withToken($token)
+            ->postJson('/api/ballots/generate', [
+                'election_id' => $election->id,
+                'quantity' => 2,
+                'program' => 'Nursing',
+                'year_level' => '2nd Year',
+            ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('ballots', [
+            'election_id' => $election->id,
+            'program' => 'Nursing',
+            'serial_number' => '060020001',
+        ]);
+        $this->assertDatabaseHas('ballots', [
+            'election_id' => $election->id,
+            'program' => 'Nursing',
+            'serial_number' => '060020002',
+        ]);
+    }
+
     public function test_committee_officer_cannot_generate_ballots(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
@@ -72,13 +116,370 @@ class AdminManagementTest extends TestCase
         $response = $this->withToken($this->tokenFor($admin))
             ->postJson('/api/users', [
                 'name' => 'New Officer',
+                'username' => 'new_officer',
                 'email' => 'new.officer@ivote.com',
-                'password' => 'password123',
                 'role' => 'committee_officer',
             ]);
 
-        $response->assertStatus(201)->assertJsonPath('data.email', 'new.officer@ivote.com');
-        $this->assertDatabaseHas('users', ['email' => 'new.officer@ivote.com']);
+        $response->assertStatus(201)
+            ->assertJsonPath('data.email', 'new.officer@ivote.com')
+            ->assertJsonPath('data.username', 'new_officer')
+            ->assertJsonPath('data.must_change_password', false)
+            ->assertJsonStructure(['temporary_password']);
+        $this->assertDatabaseHas('users', [
+            'email' => 'new.officer@ivote.com',
+            'username' => 'new_officer',
+            'must_change_password' => false,
+        ]);
+    }
+
+    public function test_new_admin_must_change_temporary_password_before_accessing_protected_routes(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $response = $this->withToken($this->tokenFor($admin))
+            ->postJson('/api/users', [
+                'name' => 'Temporary Password Admin',
+                'username' => 'temporary_admin',
+                'email' => 'temporary.admin@ivote.com',
+                'role' => 'admin',
+            ])
+            ->assertCreated();
+
+        $temporaryPassword = $response->json('temporary_password');
+        $login = $this->postJson('/api/login', [
+            'username' => 'temporary_admin',
+            'password' => $temporaryPassword,
+            'role' => 'admin',
+        ])->assertOk()
+            ->assertJsonPath('user.must_change_password', true);
+        $token = $login->json('token');
+
+        $this->withToken($token)->getJson('/api/elections')->assertStatus(423);
+
+        $this->withToken($token)->postJson('/api/change-password', [
+            'current_password' => $temporaryPassword,
+            'password' => 'new-secure-password-2026',
+            'password_confirmation' => 'new-secure-password-2026',
+        ])->assertOk()
+            ->assertJsonPath('user.must_change_password', false);
+
+        $this->withToken($token)->getJson('/api/elections')->assertOk();
+    }
+
+    public function test_committee_officer_skips_forced_password_change_even_with_legacy_flag(): void
+    {
+        $officer = User::factory()->create([
+            'role' => 'committee_officer',
+            'must_change_password' => true,
+            'password' => bcrypt('password123'),
+        ]);
+
+        $login = $this->postJson('/api/login', [
+            'username' => $officer->username,
+            'password' => 'password123',
+            'role' => 'committee_officer',
+        ])->assertOk()
+            ->assertJsonPath('user.must_change_password', false);
+
+        $this->withToken($login->json('token'))
+            ->getJson('/api/elections')
+            ->assertOk();
+    }
+
+    public function test_admin_can_assign_precinct_to_a_user(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $response = $this->withToken($this->tokenFor($admin))
+            ->postJson('/api/users', [
+                'name' => 'Precinct Officer',
+                'username' => 'precinct_officer',
+                'email' => 'precinct.officer@ivote.com',
+                'password' => 'Passw0rd!',
+                'password_confirmation' => 'Passw0rd!',
+                'role' => 'committee_officer',
+                'program' => 'BSIT',
+                'year_level' => '3rd Year',
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.precinct', 'BSIT - 3rd Year')
+            ->assertJsonPath('data.program', 'BSIT')
+            ->assertJsonPath('data.year_level', '3rd Year');
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'precinct.officer@ivote.com',
+            'username' => 'precinct_officer',
+            'precinct' => 'BSIT - 3rd Year',
+            'program' => 'BSIT',
+            'year_level' => '3rd Year',
+        ]);
+    }
+
+    public function test_admin_can_create_user_with_multiple_year_levels(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $response = $this->withToken($this->tokenFor($admin))
+            ->postJson('/api/users', [
+                'name' => 'Multi Year Officer',
+                'username' => 'multi_year_officer',
+                'email' => 'multi.year.officer@ivote.com',
+                'password' => 'Passw0rd!',
+                'password_confirmation' => 'Passw0rd!',
+                'role' => 'committee_officer',
+                'program' => 'BSE',
+                'year_level' => ['2nd Year', '3rd Year', '4th Year'],
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.precinct', 'BSE - 2nd Year, 3rd Year, 4th Year')
+            ->assertJsonPath('data.program', 'BSE')
+            ->assertJsonPath('data.year_level', '2nd Year, 3rd Year, 4th Year')
+            ->assertJsonPath('temporary_password', 'Passw0rd!');
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'multi.year.officer@ivote.com',
+            'username' => 'multi_year_officer',
+            'precinct' => 'BSE - 2nd Year, 3rd Year, 4th Year',
+            'program' => 'BSE',
+            'year_level' => '2nd Year, 3rd Year, 4th Year',
+        ]);
+    }
+
+    public function test_admin_cannot_create_user_with_invalid_or_mismatched_password(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $token = $this->tokenFor($admin);
+        $userData = [
+            'name' => 'Invalid Password Officer',
+            'username' => 'invalid_password_officer',
+            'email' => 'invalid.password@ivote.com',
+            'role' => 'committee_officer',
+        ];
+
+        $this->withToken($token)
+            ->postJson('/api/users', [
+                ...$userData,
+                'password' => 'weakpass1',
+                'password_confirmation' => 'weakpass1',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['password']);
+
+        $this->withToken($token)
+            ->postJson('/api/users', [
+                ...$userData,
+                'password' => 'Strong1!',
+                'password_confirmation' => 'Different1!',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['password']);
+
+        $this->assertDatabaseMissing('users', ['email' => 'invalid.password@ivote.com']);
+    }
+
+    public function test_results_endpoint_filters_by_precinct(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $election = Election::factory()->create(['created_by' => $admin->id]);
+
+        Ballot::factory()->create([
+            'election_id' => $election->id,
+            'status' => 'counted',
+            'precinct' => 'Precinct 1',
+        ]);
+
+        Ballot::factory()->create([
+            'election_id' => $election->id,
+            'status' => 'counted',
+            'precinct' => 'Precinct 2',
+        ]);
+
+        $response = $this->withToken($this->tokenFor($admin))
+            ->getJson("/api/elections/{$election->id}/results?precinct=Precinct+1");
+
+        $response->assertOk()
+            ->assertJsonPath('data.ballotStats.issued', 1)
+            ->assertJsonPath('data.ballotStats.counted', 1)
+            ->assertJsonPath('data.ballotStats.manualReview', 0);
+    }
+
+    public function test_precinct_results_include_unscanned_ballots_for_assigned_department_and_year(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $election = Election::factory()->create(['created_by' => $admin->id]);
+        User::factory()->create([
+            'role' => 'committee_officer',
+            'precinct' => 'Legacy precinct label',
+            'program' => 'BSIT',
+            'year_level' => '2nd Year',
+        ]);
+        Ballot::factory()->create([
+            'election_id' => $election->id,
+            'program' => 'BSIT',
+            'year_level' => '2nd Year',
+            'status' => 'issued',
+        ]);
+        Ballot::factory()->create([
+            'election_id' => $election->id,
+            'program' => 'BSE',
+            'year_level' => '2nd Year',
+            'status' => 'issued',
+        ]);
+
+        $response = $this->withToken($this->tokenFor($admin))
+            ->getJson("/api/elections/{$election->id}/results?precinct=BSIT+-+2nd+Year");
+
+        $response->assertOk()
+            ->assertJsonPath('data.ballotStats.issued', 1)
+            ->assertJsonPath('data.ballotStats.counted', 0);
+    }
+
+    public function test_admin_can_deactivate_and_reactivate_a_user(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['is_active' => true]);
+        $token = $this->tokenFor($admin);
+
+        $this->withToken($token)
+            ->patchJson("/api/users/{$user->id}/status", ['is_active' => false])
+            ->assertOk()
+            ->assertJsonPath('data.is_active', false);
+
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'is_active' => false]);
+
+        $this->withToken($token)
+            ->patchJson("/api/users/{$user->id}/status", ['is_active' => true])
+            ->assertOk()
+            ->assertJsonPath('data.is_active', true);
+
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'is_active' => true]);
+    }
+
+    public function test_admin_cannot_deactivate_their_own_account(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->withToken($this->tokenFor($admin))
+            ->patchJson("/api/users/{$admin->id}/status", ['is_active' => false])
+            ->assertUnprocessable();
+
+        $this->assertDatabaseHas('users', ['id' => $admin->id, 'is_active' => true]);
+    }
+
+    public function test_admin_can_manage_position_categories_and_assign_positions(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $election = Election::factory()->create(['created_by' => $admin->id]);
+        $token = $this->tokenFor($admin);
+
+        $positionsResponse = $this->withToken($token)
+            ->getJson("/api/elections/{$election->id}/positions");
+
+        $positionsResponse->assertOk()
+            ->assertJsonPath('data.0.name', 'President');
+        $this->assertNotNull($positionsResponse->json('data.0.category_id'));
+
+        $categoryResponse = $this->withToken($token)
+            ->postJson("/api/elections/{$election->id}/position-categories", [
+                'name' => 'Class Representatives',
+            ]);
+
+        $categoryResponse->assertCreated()
+            ->assertJsonPath('data.name', 'Class Representatives');
+        $categoryId = $categoryResponse->json('data.id');
+
+        $positionResponse = $this->withToken($token)
+            ->postJson("/api/elections/{$election->id}/positions", [
+                'name' => 'First Year Representative',
+                'vote_for_count' => 1,
+                'category_id' => $categoryId,
+            ]);
+
+        $positionResponse->assertCreated()
+            ->assertJsonPath('data.category_id', $categoryId);
+
+        $this->withToken($token)
+            ->putJson("/api/elections/{$election->id}/position-categories/{$categoryId}", [
+                'name' => 'Year Representatives',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Year Representatives');
+
+        $this->assertDatabaseHas('positions', [
+            'name' => 'First Year Representative',
+            'category_id' => $categoryId,
+        ]);
+        $this->assertDatabaseHas('position_categories', [
+            'id' => $categoryId,
+            'name' => 'Year Representatives',
+        ]);
+
+        $this->withToken($token)
+            ->deleteJson("/api/elections/{$election->id}/position-categories/{$categoryId}")
+            ->assertUnprocessable();
+
+        $emptyCategory = $this->withToken($token)
+            ->postJson("/api/elections/{$election->id}/position-categories", [
+                'name' => 'Empty Category',
+            ])
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->withToken($token)
+            ->deleteJson("/api/elections/{$election->id}/position-categories/{$emptyCategory}")
+            ->assertNoContent();
+        $this->assertDatabaseMissing('position_categories', ['id' => $emptyCategory]);
+    }
+
+    public function test_default_position_category_mapping_corrects_existing_positions(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $election = Election::factory()->create(['created_by' => $admin->id]);
+        $token = $this->tokenFor($admin);
+
+        $positions = $this->withToken($token)
+            ->getJson("/api/elections/{$election->id}/positions")
+            ->assertOk()
+            ->json('data');
+        $categories = $this->withToken($token)
+            ->getJson("/api/elections/{$election->id}/position-categories")
+            ->assertOk()
+            ->json('data');
+        $president = collect($positions)->firstWhere('name', 'President');
+        $executiveCategoryId = collect($categories)->firstWhere('name', 'Executive Officers')['id'];
+        $senatorsCategoryId = collect($categories)->firstWhere('name', 'Senators')['id'];
+
+        $this->withToken($token)
+            ->putJson("/api/elections/{$election->id}/positions/{$president['id']}", [
+                'name' => 'President',
+                'vote_for_count' => 1,
+                'category_id' => $senatorsCategoryId,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.category_id', $senatorsCategoryId);
+
+        $this->withToken($token)
+            ->getJson("/api/elections/{$election->id}/positions")
+            ->assertOk();
+
+        $this->assertDatabaseHas('positions', [
+            'id' => $president['id'],
+            'category_id' => $executiveCategoryId,
+        ]);
+    }
+
+    public function test_default_position_categories_exclude_custom_positions(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $election = Election::factory()->create(['created_by' => $admin->id]);
+
+        $response = $this->withToken($this->tokenFor($admin))
+            ->getJson("/api/elections/{$election->id}/position-categories");
+
+        $response->assertOk();
+        $this->assertNotContains('Custom Positions', collect($response->json('data'))->pluck('name')->all());
     }
 
     public function test_admin_can_create_a_user_with_a_username(): void
@@ -89,7 +490,8 @@ class AdminManagementTest extends TestCase
             ->postJson('/api/users', [
                 'name' => 'New Username Officer',
                 'username' => 'officer_bsit',
-                'password' => 'password123',
+                'password' => 'Passw0rd!',
+                'password_confirmation' => 'Passw0rd!',
                 'role' => 'committee_officer',
             ]);
 
@@ -104,13 +506,33 @@ class AdminManagementTest extends TestCase
     public function test_user_can_log_in_with_a_username(): void
     {
         User::factory()->create([
-            'email' => 'officer_bsit',
+            'email' => 'officer@ivote.com',
+            'username' => 'officer_bsit',
             'password' => bcrypt('password123'),
             'role' => 'committee_officer',
         ]);
 
         $response = $this->postJson('/api/login', [
             'username' => 'officer_bsit',
+            'password' => 'password123',
+            'role' => 'committee_officer',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('user.role', 'committee_officer')
+            ->assertJsonStructure(['token', 'user' => ['id', 'name', 'role']]);
+    }
+
+    public function test_user_can_log_in_with_an_email(): void
+    {
+        User::factory()->create([
+            'email' => 'officer@ivote.com',
+            'password' => bcrypt('password123'),
+            'role' => 'committee_officer',
+        ]);
+
+        $response = $this->postJson('/api/login', [
+            'email' => 'officer@ivote.com',
             'password' => 'password123',
             'role' => 'committee_officer',
         ]);
@@ -149,6 +571,69 @@ class AdminManagementTest extends TestCase
             ->assertJsonPath('total_ballots', 3)
             ->assertJsonPath('valid_ballots', 2)
             ->assertJsonPath('invalid_ballots', 1);
+    }
+
+    public function test_official_report_filters_ballot_totals_and_winner_votes_by_precinct(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        User::factory()->create([
+            'role' => 'committee_officer',
+            'program' => 'BSIT',
+            'year_level' => '2nd Year',
+        ]);
+        $election = Election::factory()->create(['created_by' => $admin->id]);
+        $position = Position::factory()->create([
+            'election_id' => $election->id,
+            'name' => 'Senators',
+        ]);
+        $bsitCandidate = Candidate::factory()->create([
+            'position_id' => $position->id,
+            'name' => 'BSIT Candidate',
+        ]);
+        $otherCandidate = Candidate::factory()->create([
+            'position_id' => $position->id,
+            'name' => 'Other Candidate',
+        ]);
+
+        $recordVote = function (string $program, string $yearLevel, Candidate $candidate) use ($election, $admin, $position): void {
+            $ballot = Ballot::factory()->create([
+                'election_id' => $election->id,
+                'program' => $program,
+                'year_level' => $yearLevel,
+                'status' => 'counted',
+            ]);
+            $scanId = DB::table('ballot_scans')->insertGetId([
+                'ballot_id' => $ballot->id,
+                'scanned_by' => $admin->id,
+                'status' => 'counted',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            DB::table('votes')->insert([
+                'ballot_scan_id' => $scanId,
+                'position_id' => $position->id,
+                'candidate_id' => $candidate->id,
+                'is_abstain' => false,
+            ]);
+        };
+
+        $recordVote('BSIT', '2nd Year', $bsitCandidate);
+        $recordVote('BSE', '2nd Year', $otherCandidate);
+
+        $response = $this->withToken($this->tokenFor($admin))
+            ->getJson('/api/reports/winners?election_id=' . $election->id . '&precinct=BSIT%20-%202nd%20Year')
+            ->assertOk()
+            ->assertJsonPath('precinct', 'BSIT - 2nd Year')
+            ->assertJsonPath('total_ballots', 1)
+            ->assertJsonPath('valid_ballots', 1);
+
+        $senatorRows = collect($response->json('results'))
+            ->where('position', 'Senators')
+            ->values();
+
+        $this->assertCount(1, $senatorRows);
+        $this->assertSame('BSIT Candidate', $senatorRows->first()['winner']);
+        $this->assertSame(1, $senatorRows->first()['votes']);
     }
 
     public function test_official_winners_match_public_counts_for_multi_seat_positions_and_ties(): void
@@ -205,6 +690,7 @@ class AdminManagementTest extends TestCase
 
         $report->assertOk()
             ->assertJsonCount(3, 'results')
+            ->assertJsonPath('results.0.category', 'Senators')
             ->assertJsonPath('results.0.winner', 'Alex First')
             ->assertJsonPath('results.0.standing', 1)
             ->assertJsonPath('results.1.winner', 'Casey Second')
@@ -281,6 +767,55 @@ class AdminManagementTest extends TestCase
         $this->assertSame(1, DB::table('audit_logs')->where('action', 'FINALIZE_RESULTS')->count());
     }
 
+    public function test_public_results_report_department_turnout_from_counted_ballots_only(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $election = Election::factory()->create(['created_by' => $admin->id]);
+
+        Ballot::factory()->count(3)->create([
+            'election_id' => $election->id,
+            'program' => 'BSIT',
+        ]);
+        Ballot::factory()->count(3)->create([
+            'election_id' => $election->id,
+            'program' => 'BSHM',
+        ]);
+
+        Ballot::where('election_id', $election->id)
+            ->where('program', 'BSIT')
+            ->limit(2)
+            ->update(['status' => 'counted']);
+        Ballot::where('election_id', $election->id)
+            ->where('program', 'BSHM')
+            ->limit(1)
+            ->update(['status' => 'counted']);
+        Ballot::where('election_id', $election->id)
+            ->where('program', 'BSHM')
+            ->where('status', 'issued')
+            ->limit(1)
+            ->update(['status' => 'manual_review']);
+        Ballot::where('election_id', $election->id)
+            ->where('program', 'BSHM')
+            ->where('status', 'issued')
+            ->update(['status' => 'duplicate_rejected']);
+
+        $response = $this->getJson('/api/elections/' . $election->id . '/public-results');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.voter_turnout.total_eligible_voters', 6)
+            ->assertJsonPath('meta.voter_turnout.total_participating_voters', 3)
+            ->assertJsonPath('meta.voter_turnout.turnout_percentage', 50)
+            ->assertJsonPath('meta.voter_turnout.departments.0.department', 'BSHM')
+            ->assertJsonPath('meta.voter_turnout.departments.0.eligible_voters', 3)
+            ->assertJsonPath('meta.voter_turnout.departments.0.participating_voters', 1)
+            ->assertJsonPath('meta.voter_turnout.departments.0.turnout_percentage', 33.3)
+            ->assertJsonPath('meta.voter_turnout.departments.1.department', 'BSIT')
+            ->assertJsonPath('meta.voter_turnout.departments.1.eligible_voters', 3)
+            ->assertJsonPath('meta.voter_turnout.departments.1.participating_voters', 2)
+            ->assertJsonPath('meta.voter_turnout.departments.1.turnout_percentage', 66.7)
+            ->assertJsonMissingPath('meta.voter_turnout.departments.0.serial_number');
+    }
+
     public function test_committee_officer_cannot_finalize_results(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
@@ -335,7 +870,7 @@ class AdminManagementTest extends TestCase
         $this->assertSame('issued', $ballot->fresh()->status);
     }
 
-    public function test_committee_officer_can_scan_ballot_with_legacy_program_year_tags(): void
+    public function test_committee_officer_cannot_scan_ballot_outside_assigned_program_and_year(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
         $officer = User::factory()->create(['role' => 'committee_officer']);
@@ -362,9 +897,10 @@ class AdminManagementTest extends TestCase
                 'votes' => [],
             ]);
 
-        $response->assertCreated()->assertJsonPath('data.status', 'counted');
-        $this->assertDatabaseHas('ballot_scans', ['ballot_id' => $ballot->id]);
-        $this->assertSame('counted', $ballot->fresh()->status);
+        $response->assertStatus(422)
+            ->assertJsonPath('message', 'This ballot does not match your assigned department and year level.');
+        $this->assertDatabaseMissing('ballot_scans', ['ballot_id' => $ballot->id]);
+        $this->assertSame('issued', $ballot->fresh()->status);
     }
 
     public function test_unauthenticated_request_is_rejected(): void

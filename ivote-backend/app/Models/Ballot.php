@@ -13,6 +13,7 @@ class Ballot extends Model
         'election_id',
         'program',
         'year_level',
+        'precinct',
         'serial_number',
         'qr_code_value',
         'status', // 'issued' | 'counted' | 'duplicate_rejected' | 'manual_review'

@@ -14,7 +14,7 @@ interface BallotRepositoryInterface
      * Returns true if this call successfully claimed the ballot, false if
      * another request already counted it first.
      */
-    public function claimForCounting(Ballot $ballot): bool;
+    public function claimForCounting(Ballot $ballot, ?string $precinct = null): bool;
 
     public function all(): Collection;
 

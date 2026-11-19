@@ -1,9 +1,60 @@
 import React, { useEffect, useRef, useState } from 'react';
 import apiClient from '../api/apiClient';
+import Icon from '../components/Icon';
+import BrandMark from '../components/BrandMark';
+import {
+  deleteOfflineCapture,
+  getOfflineCapture,
+  listOfflineCaptures,
+  saveOfflineCapture,
+  updateOfflineCapture,
+} from '../utils/offlineScannerQueue';
 import '../pages/ScannerPage.css';
 
 const ANALYSIS_WIDTH = 480;
 const REQUIRED_STABLE_FRAMES = 4;
+const ACTIVE_ELECTION_STORAGE_KEY = 'ivote_active_election_id';
+const REGISTRATION_TARGETS = [
+  { x: 0.14, y: 0.12 },
+  { x: 0.86, y: 0.12 },
+  { x: 0.86, y: 0.88 },
+  { x: 0.14, y: 0.88 },
+];
+const REGISTRATION_ALIGNMENT_TOLERANCE = 0.055;
+
+function readCachedElectionId() {
+  try {
+    return localStorage.getItem(ACTIVE_ELECTION_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function captureStatusLabel(status) {
+  return {
+    captured: 'Waiting to be read',
+    processing: 'Reading ballot',
+    recognized: 'Ready for review',
+    failed: 'Needs retry',
+    blocked: 'Election changed',
+  }[status] || 'Saved on this device';
+}
+
+function isScanFrameEquivalent(previous, next) {
+  if (!previous || !next || previous.length !== next.length) {
+    return false;
+  }
+
+  return previous.every((point, index) => {
+    const nextPoint = next[index];
+    return (
+      Math.abs(point.x - nextPoint.x) < 0.018 &&
+      Math.abs(point.y - nextPoint.y) < 0.018 &&
+      Math.abs(point.size - nextPoint.size) < 0.018 &&
+      point.aligned === nextPoint.aligned
+    );
+  });
+}
 
 function detectRegistrationFrame(context, width, height) {
   const pixels = context.getImageData(0, 0, width, height).data;
@@ -118,10 +169,20 @@ export default function ScannerPage() {
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState(null);
   const [submissionStatus, setSubmissionStatus] = useState(null);
-  const [electionId, setElectionId] = useState(null);
+  const [electionId, setElectionId] = useState(readCachedElectionId);
   const [scanFrame, setScanFrame] = useState(null);
   const [scannerReady, setScannerReady] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [offlineCaptures, setOfflineCaptures] = useState([]);
+  const [activeOfflineCaptureId, setActiveOfflineCaptureId] = useState(null);
+  const [offlineQueueReady, setOfflineQueueReady] = useState(false);
+  const [capturePaused, setCapturePaused] = useState(false);
+  const [queueMessage, setQueueMessage] = useState('');
   const fileInputRef = useRef(null);
+  const queueProcessorRef = useRef(false);
+  const scanFrameRef = useRef(null);
+  const scannerReadyRef = useRef(false);
+  const lastFrameUpdateRef = useRef(0);
 
   const defaultRecognitionBase = import.meta.env.VITE_RECOGNITION_SERVICE_URL || '/recognition';
 
@@ -129,6 +190,54 @@ export default function ScannerPage() {
     const host = window.location.hostname;
     return window.location.protocol === 'https:' || host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local');
   };
+
+  async function refreshOfflineCaptures() {
+    const captures = await listOfflineCaptures();
+    setOfflineCaptures(captures);
+    return captures;
+  }
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    (async () => {
+      try {
+        const captures = await listOfflineCaptures();
+        const recoveredCaptures = [];
+
+        for (const capture of captures) {
+          if (capture.status === 'processing') {
+            await updateOfflineCapture(capture.id, { status: 'captured', error: '' });
+            recoveredCaptures.push({ ...capture, status: 'captured', error: '' });
+          } else {
+            recoveredCaptures.push(capture);
+          }
+        }
+
+        if (active) setOfflineCaptures(recoveredCaptures);
+      } catch (storageError) {
+        if (active) setQueueMessage(storageError.message || 'Offline capture storage is unavailable.');
+      } finally {
+        if (active) setOfflineQueueReady(true);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Mount effect: load election & initialize camera stream
   useEffect(() => {
@@ -138,9 +247,15 @@ export default function ScannerPage() {
       try {
         const resp = await apiClient.get('/elections/active');
         if (active && resp.data?.data?.id) {
-          setElectionId(resp.data.data.id);
+          const activeElectionId = String(resp.data.data.id);
+          setElectionId(activeElectionId);
+          localStorage.setItem(ACTIVE_ELECTION_STORAGE_KEY, activeElectionId);
         }
       } catch (e) {
+        if (e.response?.status === 404) {
+          setElectionId(null);
+          localStorage.removeItem(ACTIVE_ELECTION_STORAGE_KEY);
+        }
         console.warn('Could not fetch active election id:', e);
       }
 
@@ -178,7 +293,7 @@ export default function ScannerPage() {
 
   // Frame inspection loop for auto-detection and overlay alignment
   useEffect(() => {
-    if (!stream || processing || result) {
+    if (!stream || processing || result || capturePaused) {
       stabilityRef.current = { frame: null, count: 0 };
       setScanFrame(null);
       setScannerReady(false);
@@ -212,8 +327,14 @@ export default function ScannerPage() {
       const detected = detectRegistrationFrame(context, width, height);
       if (!detected) {
         stabilityRef.current = { frame: null, count: 0 };
-        setScanFrame(null);
-        setScannerReady(false);
+        if (scanFrameRef.current !== null) {
+          scanFrameRef.current = null;
+          setScanFrame(null);
+        }
+        if (scannerReadyRef.current) {
+          scannerReadyRef.current = false;
+          setScannerReady(false);
+        }
         return;
       }
 
@@ -223,11 +344,37 @@ export default function ScannerPage() {
       );
       const stableCount = isStable ? previous.count + 1 : 1;
       stabilityRef.current = { frame: detected, count: stableCount };
-      setScanFrame(detected.map(({ x, y }) => ({ x: x / width, y: y / height })));
-      const ready = stableCount >= REQUIRED_STABLE_FRAMES;
-      setScannerReady(ready);
+      const markerAlignment = detected.map((marker, index) => ({
+        ...marker,
+        aligned: Math.hypot(
+          marker.x / width - REGISTRATION_TARGETS[index].x,
+          marker.y / height - REGISTRATION_TARGETS[index].y
+        ) <= REGISTRATION_ALIGNMENT_TOLERANCE,
+      }));
+      const nextScanFrame = markerAlignment.map(({ x, y, size, aligned }) => ({
+        x: x / width,
+        y: y / height,
+        size: size / width,
+        aligned,
+      }));
+      const nextReady = stableCount >= REQUIRED_STABLE_FRAMES && markerAlignment.every(({ aligned }) => aligned);
 
-      if (ready && !autoCaptureRef.current && !processingRef.current) {
+      const now = performance.now();
+      const shouldUpdateFrame = now - lastFrameUpdateRef.current >= 250;
+      if (shouldUpdateFrame) {
+        lastFrameUpdateRef.current = now;
+        if (!scanFrameRef.current || !isScanFrameEquivalent(scanFrameRef.current, nextScanFrame)) {
+          scanFrameRef.current = nextScanFrame;
+          setScanFrame(nextScanFrame);
+        }
+      }
+
+      if (scannerReadyRef.current !== nextReady) {
+        scannerReadyRef.current = nextReady;
+        setScannerReady(nextReady);
+      }
+
+      if (nextReady && !autoCaptureRef.current && !processingRef.current) {
         autoCaptureRef.current = true;
         captureAndRecognize();
       }
@@ -238,7 +385,7 @@ export default function ScannerPage() {
       active = false;
       cancelAnimationFrame(animationFrame);
     };
-  }, [stream, processing, result]);
+  }, [stream, processing, result, capturePaused]);
 
   async function startStream(id = deviceId) {
     const requestId = ++cameraRequestRef.current;
@@ -358,11 +505,216 @@ export default function ScannerPage() {
     startStream(deviceId || undefined);
   }
 
-  function clearResult() {
+  async function clearResult() {
+    if (activeOfflineCaptureId) {
+      try {
+        await deleteOfflineCapture(activeOfflineCaptureId);
+        await refreshOfflineCaptures();
+      } catch (storageError) {
+        setQueueMessage(storageError.message || 'Unable to remove the reviewed capture.');
+        return;
+      }
+      setActiveOfflineCaptureId(null);
+    }
     setResult(null);
     setSubmissionStatus(null);
     autoCaptureRef.current = false;
     stabilityRef.current = { frame: null, count: 0 };
+    scanFrameRef.current = null;
+    scannerReadyRef.current = false;
+    setScanFrame(null);
+    setScannerReady(false);
+  }
+
+  async function getElectionIdForCapture() {
+    if (!navigator.onLine) {
+      if (electionId) return String(electionId);
+      throw new Error('Connect while an election is active before capturing ballots offline.');
+    }
+
+    try {
+      const response = await apiClient.get('/elections/active');
+      const activeElectionId = String(response.data?.data?.id || '');
+      if (!activeElectionId) throw new Error('No active election is available for scanning.');
+
+      setElectionId(activeElectionId);
+      localStorage.setItem(ACTIVE_ELECTION_STORAGE_KEY, activeElectionId);
+      return activeElectionId;
+    } catch (requestError) {
+      if (electionId && !requestError.response) return String(electionId);
+      throw requestError;
+    }
+  }
+
+  async function recognizeImage(blob, targetElectionId) {
+    const form = new FormData();
+    form.append('file', blob, 'ballot.jpg');
+
+    const recoUrl = `${defaultRecognitionBase}/recognize?election_id=${targetElectionId}`;
+    const response = await fetch(recoUrl, { method: 'POST', body: form });
+
+    if (!response.ok) {
+      const responseText = await response.text();
+      const recognitionError = new Error(`Recognition service error: ${responseText || response.statusText}`);
+      recognitionError.status = response.status;
+      throw recognitionError;
+    }
+
+    return response.json();
+  }
+
+  async function saveCapturedImageOffline(blob, targetElectionId) {
+    const captureId = await saveOfflineCapture(blob, targetElectionId);
+    await refreshOfflineCaptures();
+    setQueueMessage('Capture saved on this device. It will be read when the connection returns.');
+    setSubmissionStatus('Ballot image saved offline. It has not been counted.');
+    setCapturePaused(true);
+    autoCaptureRef.current = true;
+    return captureId;
+  }
+
+  async function analyzeOrQueueImage(blob) {
+    const targetElectionId = await getElectionIdForCapture();
+
+    if (!navigator.onLine) {
+      await saveCapturedImageOffline(blob, targetElectionId);
+      return;
+    }
+
+    try {
+      setResult(await recognizeImage(blob, targetElectionId));
+      setActiveOfflineCaptureId(null);
+    } catch (recognitionError) {
+      if (!navigator.onLine || !recognitionError.status || recognitionError.status >= 500) {
+        await saveCapturedImageOffline(blob, targetElectionId);
+        return;
+      }
+
+      throw recognitionError;
+    }
+  }
+
+  async function processNextOfflineCapture() {
+    if (
+      queueProcessorRef.current || !navigator.onLine || !electionId ||
+      processingRef.current || result
+    ) return;
+
+    let captures = [];
+    try {
+      captures = await listOfflineCaptures();
+    } catch (storageError) {
+      setQueueMessage(storageError.message || 'Offline capture storage is unavailable.');
+      return;
+    }
+
+    const waitingCapture = captures.find((item) => item.status === 'captured');
+    if (!waitingCapture) return;
+
+    queueProcessorRef.current = true;
+    processingRef.current = true;
+    setProcessing(true);
+
+    let capture = null;
+    try {
+      capture = waitingCapture;
+
+      const activeResponse = await apiClient.get('/elections/active');
+      const currentElectionId = String(activeResponse.data?.data?.id || '');
+      if (currentElectionId !== capture.electionId) {
+        await updateOfflineCapture(capture.id, {
+          status: 'blocked',
+          error: 'The active election changed. This image was not sent to another election.',
+        });
+        setQueueMessage('A saved capture belongs to a different election and was not processed.');
+        return;
+      }
+
+      await updateOfflineCapture(capture.id, { status: 'processing', error: '' });
+      await refreshOfflineCaptures();
+
+      const fullCapture = await getOfflineCapture(capture.id);
+      if (!fullCapture?.image) throw new Error('The saved ballot image is missing.');
+
+      const recognitionResult = await recognizeImage(fullCapture.image, capture.electionId);
+      await updateOfflineCapture(capture.id, {
+        status: 'recognized',
+        result: recognitionResult,
+        error: '',
+      });
+      setResult(recognitionResult);
+      setActiveOfflineCaptureId(capture.id);
+      setCapturePaused(true);
+      setQueueMessage('Saved image read. Review the recognized votes before submitting.');
+    } catch (processingError) {
+      if (capture) {
+        const status = !navigator.onLine ? 'captured' : processingError.response?.status === 404 ? 'blocked' : 'failed';
+        await updateOfflineCapture(capture.id, {
+          status,
+          error: processingError.message || 'Unable to read this ballot image.',
+        }).catch(() => {});
+      }
+      setQueueMessage(processingError.message || 'Unable to read the saved ballot image.');
+      setIsOnline(navigator.onLine);
+    } finally {
+      queueProcessorRef.current = false;
+      processingRef.current = false;
+      setProcessing(false);
+      await refreshOfflineCaptures().catch(() => {});
+    }
+  }
+
+  useEffect(() => {
+    if (!offlineQueueReady || result) return;
+
+    const recognizedCapture = offlineCaptures.find((capture) => capture.status === 'recognized');
+    if (recognizedCapture?.result) {
+      setResult(recognizedCapture.result);
+      setActiveOfflineCaptureId(recognizedCapture.id);
+      setCapturePaused(true);
+      return;
+    }
+
+    const hasWaitingCapture = offlineCaptures.some((capture) => capture.status === 'captured');
+    if (isOnline && electionId && hasWaitingCapture) {
+      processNextOfflineCapture();
+    }
+  }, [offlineQueueReady, offlineCaptures, result, isOnline, electionId]);
+
+  async function removeOfflineCapture(captureId) {
+    if (!window.confirm('Remove this saved ballot image from this device?')) return;
+
+    try {
+      await deleteOfflineCapture(captureId);
+      await refreshOfflineCaptures();
+      if (activeOfflineCaptureId === captureId) {
+        setActiveOfflineCaptureId(null);
+        setResult(null);
+      }
+      setQueueMessage('Saved capture removed from this device.');
+    } catch (storageError) {
+      setQueueMessage(storageError.message || 'Unable to remove the saved capture.');
+    }
+  }
+
+  async function retryOfflineCapture(captureId) {
+    try {
+      await updateOfflineCapture(captureId, { status: 'captured', error: '' });
+      await refreshOfflineCaptures();
+      setQueueMessage('Retrying saved ballot image…');
+      processNextOfflineCapture();
+    } catch (storageError) {
+      setQueueMessage(storageError.message || 'Unable to retry the saved capture.');
+    }
+  }
+
+  function resumeCapturing() {
+    setCapturePaused(false);
+    setSubmissionStatus(null);
+    autoCaptureRef.current = false;
+    stabilityRef.current = { frame: null, count: 0 };
+    scanFrameRef.current = null;
+    scannerReadyRef.current = false;
     setScanFrame(null);
     setScannerReady(false);
   }
@@ -398,30 +750,7 @@ export default function ScannerPage() {
       const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.92));
       if (!blob) throw new Error('Could not capture frame from camera.');
 
-      let eid = electionId;
-      if (!eid) {
-        try {
-          const resp = await apiClient.get('/elections/active');
-          eid = resp.data?.data?.id;
-          if (eid) setElectionId(eid);
-        } catch (e) {
-          throw new Error('Could not determine active election. Please check election settings.');
-        }
-      }
-
-      const form = new FormData();
-      form.append('file', blob, 'ballot.jpg');
-
-      const recoUrl = `${defaultRecognitionBase}/recognize?election_id=${eid}`;
-      const recoResp = await fetch(recoUrl, { method: 'POST', body: form });
-
-      if (!recoResp.ok) {
-        const txt = await recoResp.text();
-        throw new Error('Recognition service error: ' + (txt || recoResp.statusText));
-      }
-
-      const body = await recoResp.json();
-      setResult(body);
+      await analyzeOrQueueImage(blob);
     } catch (e) {
       console.error('Scan recognition error:', e);
       setError(e.message || String(e));
@@ -440,25 +769,7 @@ export default function ScannerPage() {
     setSubmissionStatus(null);
 
     try {
-      let eid = electionId;
-      if (!eid) {
-        const resp = await apiClient.get('/elections/active');
-        eid = resp.data?.data?.id;
-        if (eid) setElectionId(eid);
-      }
-
-      const form = new FormData();
-      form.append('file', blob, 'ballot.jpg');
-      const recoUrl = `${defaultRecognitionBase}/recognize?election_id=${eid}`;
-
-      const recoResp = await fetch(recoUrl, { method: 'POST', body: form });
-      if (!recoResp.ok) {
-        const txt = await recoResp.text();
-        throw new Error('Recognition service error: ' + (txt || recoResp.statusText));
-      }
-
-      const body = await recoResp.json();
-      setResult(body);
+      await analyzeOrQueueImage(blob);
     } catch (e) {
       console.error('File recognition error:', e);
       setError(e.message || String(e));
@@ -493,15 +804,16 @@ export default function ScannerPage() {
       const votesObj = result.votes || {};
       Object.entries(votesObj).forEach(([positionId, posRes]) => {
         const pid = parseInt(positionId, 10);
-        if (posRes.is_abstain) {
-          votesArr.push({ position_id: pid, candidate_id: null, is_abstain: true });
-        } else if (Array.isArray(posRes.votes)) {
+        if (!posRes.is_overvote && Array.isArray(posRes.votes)) {
           posRes.votes.forEach((cid) => votesArr.push({ position_id: pid, candidate_id: cid, is_abstain: false }));
         }
       });
 
+      const queuedCapture = activeOfflineCaptureId
+        ? offlineCaptures.find((capture) => capture.id === activeOfflineCaptureId)
+        : null;
       const payload = {
-        election_id: electionId,
+        election_id: queuedCapture?.electionId || electionId,
         serial_number: result.serial_number,
         decoded_via: result.decoded_via,
         omr_confidence: result.confidence,
@@ -510,7 +822,12 @@ export default function ScannerPage() {
 
       const resp = await apiClient.post('/scans', payload);
       const status = resp.data.data?.status || (resp.status === 201 ? 'counted' : 'unknown');
-      setSubmissionStatus(`Ballot ${result.serial_number} successfully recorded (${status}).`);
+      setSubmissionStatus('Ballot Successfully Scanned! Your vote has been received and recorded. Thank you for your participation.');
+      if (activeOfflineCaptureId) {
+        await deleteOfflineCapture(activeOfflineCaptureId);
+        setActiveOfflineCaptureId(null);
+        await refreshOfflineCaptures();
+      }
       setResult(null);
       autoCaptureRef.current = false;
       stabilityRef.current = { frame: null, count: 0 };
@@ -525,7 +842,7 @@ export default function ScannerPage() {
   }
 
   const recognitionFailure = result?.stage_failed === 'serial_decode'
-    ? 'The ballot serial and QR code could not be read. Keep the ballot flat and well-lit with the QR code and serial clearly in view.'
+    ? 'The printed serial could not be read. Keep the ballot flat and well-lit, with the serial clearly in view.'
     : result?.stage_failed === 'perspective_correction'
       ? 'The ballot outline could not be detected. Place the entire ballot flat, keep all four corner markers in view, or hold the camera closer.'
       : null;
@@ -533,7 +850,13 @@ export default function ScannerPage() {
   return (
     <div className="scanner-page">
       <div className="scanner-header">
-        <h1>Ballot Scanner</h1>
+        <div className="scanner-brand">
+          <BrandMark className="scanner-brand-mark" />
+          <div>
+            <p className="scanner-office">Office of the Student Electoral Committee</p>
+            <h1>Official Ballot Scanner</h1>
+          </div>
+        </div>
       </div>
 
       <div className="scanner-body">
@@ -541,6 +864,15 @@ export default function ScannerPage() {
           <video ref={videoRef} className="video-preview" playsInline muted autoPlay />
           <canvas ref={canvasRef} style={{ display: 'none' }} />
           <canvas ref={analysisCanvasRef} className="analysis-canvas" />
+          {stream && (
+            <svg className="privacy-mask" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
+              <path
+                fillRule="evenodd"
+                d="M0 0H1000V1000H0Z M30 45H237V182H30Z M763 45H970V182H763Z M763 818H970V955H763Z M30 818H237V955H30Z"
+              />
+            </svg>
+          )}
+          <div className="privacy-indicator" aria-hidden="true">BALLOT DETAILS MASKED</div>
 
           {cameraLoading && (
             <div className="camera-status-overlay">
@@ -578,12 +910,26 @@ export default function ScannerPage() {
               aria-hidden="true"
             >
               <polygon points={scanFrame.map(({ x, y }) => `${x * ANALYSIS_WIDTH},${y * Math.round(ANALYSIS_WIDTH * (videoRef.current?.videoHeight || 4) / (videoRef.current?.videoWidth || 3))}`).join(' ')} />
+              {scanFrame.map((marker, index) => {
+                const markerSize = marker.size * ANALYSIS_WIDTH;
+                const frameHeight = Math.round(ANALYSIS_WIDTH * (videoRef.current?.videoHeight || 4) / (videoRef.current?.videoWidth || 3));
+                return (
+                  <rect
+                    key={index}
+                    className={`detected-registration-box${marker.aligned ? ' is-aligned' : ''}`}
+                    x={marker.x * ANALYSIS_WIDTH - markerSize / 2}
+                    y={marker.y * frameHeight - markerSize / 2}
+                    width={markerSize}
+                    height={markerSize}
+                  />
+                );
+              })}
             </svg>
           )}
 
           {stream && (
             <div className={`overlay${scannerReady ? ' is-ready' : ''}`}>
-              {scannerReady ? '✓ Ballot detected — Hold steady…' : 'Position portrait ballot in frame'}
+              {scannerReady ? 'Registration markers aligned - Hold steady' : 'Align all four registration markers'}
             </div>
           )}
         </div>
@@ -631,13 +977,13 @@ export default function ScannerPage() {
             {processing
               ? 'Scanning & Analyzing…'
               : scannerReady
-                ? 'Capture Ballot (Aligned ✓)'
+                ? <>Capture Ballot <span className="scanner-aligned-state"><Icon name="check" size={14} /> Aligned</span></>
                 : 'Capture / Scan'}
           </button>
 
           {submissionStatus && (
             <div className="submit-success" role="status">
-              ✓ {submissionStatus}
+              <Icon name="check" size={16} /> {submissionStatus}
             </div>
           )}
 
@@ -653,19 +999,92 @@ export default function ScannerPage() {
           )}
         </div>
 
+        <section className="offline-capture-queue" aria-labelledby="offline-queue-title">
+          <div className="offline-queue-heading">
+            <div>
+              <h2 id="offline-queue-title">Saved Captures</h2>
+              <p>{offlineCaptures.length} ballot image{offlineCaptures.length === 1 ? '' : 's'} on this device</p>
+            </div>
+            <span className={`connection-status${isOnline ? ' is-online' : ' is-offline'}`}>
+              {isOnline ? 'Online' : 'Offline'}
+            </span>
+          </div>
+
+          {!electionId && (
+            <p className="offline-queue-notice">
+              Load an active election while online before capturing ballots for offline processing.
+            </p>
+          )}
+          {queueMessage && <p className="offline-queue-message" role="status">{queueMessage}</p>}
+          {capturePaused && !result && (
+            <button type="button" className="secondary offline-next-capture" onClick={resumeCapturing}>
+              Capture Next Ballot
+            </button>
+          )}
+
+          {offlineCaptures.length > 0 ? (
+            <ul className="offline-queue-list">
+              {offlineCaptures.map((capture) => (
+                <li key={capture.id} className="offline-queue-item">
+                  <div className="offline-capture-details">
+                    <strong>{new Date(capture.capturedAt).toLocaleString()}</strong>
+                    <span>{captureStatusLabel(capture.status)}</span>
+                    {capture.error && <small>{capture.error}</small>}
+                  </div>
+                  <div className="offline-capture-actions">
+                    {capture.status === 'recognized' && !result && (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => {
+                          setResult(capture.result);
+                          setActiveOfflineCaptureId(capture.id);
+                          setCapturePaused(true);
+                        }}
+                      >
+                        Review
+                      </button>
+                    )}
+                    {capture.status === 'failed' && isOnline && (
+                      <button type="button" className="secondary" onClick={() => retryOfflineCapture(capture.id)} disabled={processing}>
+                        Retry
+                      </button>
+                    )}
+                    <button type="button" className="offline-remove-button" onClick={() => removeOfflineCapture(capture.id)}>
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="offline-queue-empty">No saved captures.</p>
+          )}
+        </section>
+
         {result && (
           <div className="result-card">
-            <h3>Recognition Result</h3>
-            <p><strong>Serial:</strong> {result.serial_number || 'Not detected'}</p>
+            <h3>Ballot Check</h3>
+            <p><strong>Ballot identifier:</strong> {result.serial_number ? 'Read successfully' : 'Not detected'}</p>
             <p><strong>Confidence:</strong> {Math.round((result.confidence || 0) * 100)}%</p>
+            <p className="privacy-result-note">Candidate selections are hidden on this screen.</p>
             {recognitionFailure && <p className="error" role="alert">{recognitionFailure}</p>}
 
             <div className="votes-list">
               {Object.entries(result.votes || {}).map(([posId, pos]) => (
-                <div key={posId} className="vote-row">
-                  <div className="vote-pos">Position {posId}:</div>
+                <div
+                  key={posId}
+                  className={`vote-row${pos.is_overvote ? ' is-overvote' : ''}${pos.is_abstain ? ' is-blank' : ''}`}
+                >
+                  <div className="vote-pos">Position {posId}</div>
                   <div className="vote-val">
-                    {pos.is_abstain ? 'Abstain' : (pos.votes && pos.votes.length ? pos.votes.join(', ') : 'No mark')}
+                    {pos.is_overvote
+                      ? 'Overvote - position not counted'
+                      : pos.is_abstain
+                        ? 'No mark - position not counted'
+                        : (pos.votes && pos.votes.length
+                          ? `${pos.votes.length} selection${pos.votes.length === 1 ? '' : 's'} detected`
+                          : 'No mark - position not counted')}
                   </div>
                 </div>
               ))}

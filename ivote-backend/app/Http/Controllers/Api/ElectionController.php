@@ -11,6 +11,7 @@ use App\Models\Ballot;
 use App\Models\BallotScan;
 use App\Models\Election;
 use App\Models\Position;
+use App\Models\User;
 use App\Models\Vote;
 use App\Repositories\Contracts\ElectionRepositoryInterface;
 use Illuminate\Http\Response;
@@ -114,72 +115,169 @@ class ElectionController extends Controller
                 ->where('status', 'counted')
                 ->count();
 
+        $departmentTurnout = Ballot::query()
+            ->where('election_id', $election->id)
+            ->selectRaw("COALESCE(NULLIF(program, ''), 'Unassigned') as department, COUNT(*) as eligible_voters, SUM(CASE WHEN status = 'counted' THEN 1 ELSE 0 END) as participating_voters")
+            ->groupByRaw("COALESCE(NULLIF(program, ''), 'Unassigned')")
+            ->orderBy('department')
+            ->get()
+            ->map(fn (Ballot $ballot) => [
+                'department' => $ballot->department,
+                'eligible_voters' => (int) $ballot->eligible_voters,
+                'participating_voters' => (int) $ballot->participating_voters,
+                'turnout_percentage' => $ballot->eligible_voters
+                    ? round($ballot->participating_voters / $ballot->eligible_voters * 100, 1)
+                    : 0,
+            ]);
+
+        $totalEligibleVoters = $departmentTurnout->sum('eligible_voters');
+        $totalParticipatingVoters = $departmentTurnout->sum('participating_voters');
+
         return (new ElectionResource(
             $election->load('positions.candidates')
         ))->additional([
             'meta' => [
                 'ballots_counted' => $countedBallots,
+                'voter_turnout' => [
+                    'total_eligible_voters' => $totalEligibleVoters,
+                    'total_participating_voters' => $totalParticipatingVoters,
+                    'turnout_percentage' => $totalEligibleVoters
+                        ? round($totalParticipatingVoters / $totalEligibleVoters * 100, 1)
+                        : 0,
+                    'departments' => $departmentTurnout->values(),
+                ],
             ],
         ]);
     }
 
-    public function results(int $id)
-{
-    $election = $this->elections->find($id);
+    public function results(Request $request, int $id)
+    {
+        $election = $this->elections->find($id);
 
-    abort_if(
-        ! $election,
-        Response::HTTP_NOT_FOUND,
-        'Election not found.'
-    );
+        abort_if(
+            ! $election,
+            Response::HTTP_NOT_FOUND,
+            'Election not found.'
+        );
 
-    // Vote totals for the selected election only
-    $tally = Vote::query()
-        ->selectRaw('votes.candidate_id, COUNT(*) as total_votes')
-        ->join(
-            'ballot_scans',
-            'votes.ballot_scan_id',
-            '=',
-            'ballot_scans.id'
-        )
-        ->join(
-            'ballots',
-            'ballot_scans.ballot_id',
-            '=',
-            'ballots.id'
-        )
-        ->where('ballots.election_id', $election->id)
-        ->where('ballot_scans.status', 'counted')
-        ->where('votes.is_abstain', false)
-        ->whereNotNull('votes.candidate_id')
-        ->groupBy('votes.candidate_id')
-        ->pluck('total_votes', 'votes.candidate_id')
-        ->all();
+        $user = $request->user();
+        $precinct = $user?->role === 'committee_officer'
+            ? ($user->precinct ?: $request->query('precinct'))
+            : $request->query('precinct');
+        $program = $request->query('program');
+        $yearLevel = $request->query('year_level');
+        $precinctAssignments = collect();
 
-    // Ballot statistics for the selected election only
-    $issued = Ballot::where('election_id', $election->id)
-        ->count();
+        if ($user?->role === 'committee_officer' && $program && $yearLevel) {
+            $precinctAssignments = collect([[
+                'program' => $program,
+                'year_level' => $yearLevel,
+            ]]);
+        } elseif (! empty($precinct) && $precinct !== 'all') {
+            $precinctAssignments = User::query()
+                ->where('role', 'committee_officer')
+                ->whereNotNull('program')
+                ->whereNotNull('year_level')
+                ->get(['program', 'year_level', 'precinct', 'role'])
+                ->filter(fn (User $officer) => $officer->precinct === $precinct || ($officer->program . ' - ' . $officer->year_level) === $precinct)
+                ->map(fn (User $officer) => [
+                    'program' => $officer->program,
+                    'year_level' => $officer->year_level,
+                ])
+                ->values();
+        }
 
-    $counted = Ballot::where('election_id', $election->id)
-        ->where('status', 'counted')
-        ->count();
+        $applyPrecinctScope = static function ($query) use ($precinct, $precinctAssignments) {
+            if (empty($precinct) || $precinct === 'all') {
+                return;
+            }
 
-    $manualReview = Ballot::where('election_id', $election->id)
-        ->where('status', 'manual_review')
-        ->count();
+            $query->where(function ($scope) use ($precinct, $precinctAssignments) {
+                $scope->where('ballots.precinct', $precinct);
 
-    return response()->json([
-        'data' => [
-            'tally' => $tally,
+                if ($precinctAssignments->isNotEmpty()) {
+                    $scope->orWhere(function ($unassigned) use ($precinctAssignments) {
+                        $unassigned->where(function ($pairs) use ($precinctAssignments) {
+                            foreach ($precinctAssignments as $assignment) {
+                                $pairs->orWhere(function ($pair) use ($assignment) {
+                                    $pair->where('ballots.program', $assignment['program'])
+                                        ->where('ballots.year_level', $assignment['year_level']);
+                                });
+                            }
+                        });
+                    });
+                }
+            });
+        };
 
-            'ballotStats' => [
-                'issued' => $issued,
-                'counted' => $counted,
-                'manualReview' => $manualReview,
+        $ballotQuery = Ballot::query()->where('election_id', $election->id);
+        $applyPrecinctScope($ballotQuery);
+
+        if (! empty($program)) {
+            $ballotQuery->where('program', $program);
+        }
+
+        if (! empty($yearLevel)) {
+            $ballotQuery->where('year_level', $yearLevel);
+        }
+
+        // Vote totals for the selected election only
+        $tally = Vote::query()
+            ->selectRaw('votes.candidate_id, COUNT(*) as total_votes')
+            ->join(
+                'ballot_scans',
+                'votes.ballot_scan_id',
+                '=',
+                'ballot_scans.id'
+            )
+            ->join(
+                'ballots',
+                'ballot_scans.ballot_id',
+                '=',
+                'ballots.id'
+            )
+            ->where('ballots.election_id', $election->id)
+            ->where('ballot_scans.status', 'counted')
+            ->where('votes.is_abstain', false)
+            ->whereNotNull('votes.candidate_id');
+
+        $applyPrecinctScope($tally);
+
+        if (! empty($program)) {
+            $tally->where('ballots.program', $program);
+        }
+
+        if (! empty($yearLevel)) {
+            $tally->where('ballots.year_level', $yearLevel);
+        }
+
+        $tally = $tally
+            ->groupBy('votes.candidate_id')
+            ->pluck('total_votes', 'votes.candidate_id')
+            ->all();
+
+        // Ballot statistics for the selected election only
+        $issued = (clone $ballotQuery)->count();
+
+        $counted = (clone $ballotQuery)
+            ->where('status', 'counted')
+            ->count();
+
+        $manualReview = (clone $ballotQuery)
+            ->where('status', 'manual_review')
+            ->count();
+
+        return response()->json([
+            'data' => [
+                'tally' => $tally,
+                'ballotStats' => [
+                    'issued' => $issued,
+                    'counted' => $counted,
+                    'manualReview' => $manualReview,
+                ],
             ],
-        ],
-    ]);
-}
+        ]);
+    }
 
     public function update(StoreElectionRequest $request, int $id)
     {

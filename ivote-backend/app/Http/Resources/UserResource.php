@@ -12,9 +12,13 @@ class UserResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'username' => $this->email,
+            'username' => $this->username,
             'email' => $this->email,
             'role' => $this->role,
+            'precinct' => $this->precinct,
+            'program' => $this->program,
+            'year_level' => $this->year_level,
+            'must_change_password' => $this->must_change_password,
             'is_active' => $this->is_active,
             'created_at' => $this->created_at?->toIso8601String(),
         ];

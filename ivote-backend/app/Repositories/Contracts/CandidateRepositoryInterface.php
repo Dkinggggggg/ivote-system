@@ -9,6 +9,8 @@ interface CandidateRepositoryInterface
 {
     public function allForPosition(int $positionId): Collection;
 
+    public function allForElection(int $electionId): Collection;
+
     public function find(int $id): ?Candidate;
 
     public function create(array $data): Candidate;

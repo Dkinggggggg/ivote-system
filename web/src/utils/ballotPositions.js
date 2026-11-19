@@ -36,10 +36,11 @@ const yearCodes = {
 
 export function parseBallotSerial(serialNumber = '') {
   const match = serialNumber.match(/^(\d{2})(\d{3})(\d{4})$/);
-  if (!match || !departmentCodes[match[1]] || !yearCodes[match[2]]) return null;
+  if (!match || !yearCodes[match[2]]) return null;
 
   return {
-    department: departmentCodes[match[1]],
+    department: departmentCodes[match[1]] || null,
+    departmentCode: match[1],
     yearLevel: yearCodes[match[2]],
     sequence: match[3],
   };
@@ -48,11 +49,23 @@ export function parseBallotSerial(serialNumber = '') {
 export function positionsForBallot(positions = [], serialNumber) {
   const scope = parseBallotSerial(serialNumber);
   const orderedPositions = orderBallotPositions(positions);
-  if (!scope) return orderedPositions;
 
-  return orderedPositions.filter(({ name }) => {
-    if (name.startsWith('Governor - ')) return name === `Governor - ${scope.department}`;
-    if (name.startsWith('Batch Representative - ')) return name === `Batch Representative - ${scope.yearLevel}`;
-    return true;
-  });
+  const scopedPositions = scope
+    ? orderedPositions.filter((position) => {
+        const { name, department_serial_code: positionCode } = position;
+        if (positionCode) {
+          return String(positionCode).padStart(2, '0') === scope.departmentCode;
+        }
+        if (name.startsWith('Governor - ')) return name === `Governor - ${scope.department}`;
+        if (name.startsWith('Batch Representative - ')) return name === `Batch Representative - ${scope.yearLevel}`;
+        return true;
+      })
+    : orderedPositions;
+
+  return scopedPositions.map((position) => ({
+    ...position,
+    candidates: [...(position.candidates || [])].sort((first, second) =>
+      first.name.localeCompare(second.name, undefined, { sensitivity: 'base' })
+    ),
+  }));
 }

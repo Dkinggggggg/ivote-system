@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function SettingsPage() {
 
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [isConfirmingLogout, setIsConfirmingLogout] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isLogoutComplete, setIsLogoutComplete] = useState(false);
 
   const infoRows = [
     ['System Name', 'iVote'],
@@ -16,25 +19,13 @@ export default function SettingsPage() {
   ];
 
   async function confirmLogout() {
+    setIsConfirmingLogout(false);
+    setIsConfirmingLogout(false);
     setIsLoggingOut(true);
+    setIsLogoutComplete(true);
 
-    try {
-      await logout();
-      window.dispatchEvent(
-        new CustomEvent('ivote-toast', {
-          detail: { message: 'Logged out successfully.', type: 'success' },
-        })
-      );
-    } catch (error) {
-      window.dispatchEvent(
-        new CustomEvent('ivote-toast', {
-          detail: { message: 'Logout failed. Please try again.', type: 'error' },
-        })
-      );
-    } finally {
-      setIsLoggingOut(false);
-      setIsConfirmingLogout(false);
-    }
+    await logout(900);
+    navigate('/login', { replace: true });
   }
 
   return (
@@ -186,6 +177,22 @@ export default function SettingsPage() {
         </button>
 
       </div>
+
+      {isLogoutComplete && (
+        <div className="logout-success-overlay" role="status" aria-live="polite">
+          <div className="logout-success-content">
+            <div className="logout-success-mark" aria-hidden="true">
+              <svg viewBox="0 0 52 52">
+                <circle className="logout-success-circle" cx="26" cy="26" r="23" />
+                <path className="logout-success-check" d="m15 27 7 7 15-16" />
+              </svg>
+            </div>
+            <p className="logout-success-kicker">Session closed</p>
+            <h2>Signed out securely</h2>
+            <p>Returning you to sign in…</p>
+          </div>
+        </div>
+      )}
 
       {isConfirmingLogout && (
         <div className="logout-modal-backdrop" onClick={() => setIsConfirmingLogout(false)}>

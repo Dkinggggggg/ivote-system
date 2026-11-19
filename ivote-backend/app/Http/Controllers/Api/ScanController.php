@@ -9,6 +9,7 @@ use App\Models\Ballot;
 use App\Models\BallotScan;
 use App\Models\Candidate;
 use App\Models\Election;
+use App\Models\Position;
 use App\Models\Vote;
 use App\Repositories\Contracts\BallotRepositoryInterface;
 use Illuminate\Http\Response;
@@ -59,6 +60,27 @@ class ScanController extends Controller
             }
         }
 
+        $positionVoteLimits = Position::whereIn(
+            'id',
+            collect($data['votes'])->pluck('position_id')->unique()
+        )->pluck('vote_for_count', 'id');
+
+        $data['votes'] = collect($data['votes'])
+            ->groupBy('position_id')
+            ->flatMap(function ($positionVotes, $positionId) use ($positionVoteLimits) {
+                $selectedVotes = $positionVotes
+                    ->filter(fn ($vote) => ! ($vote['is_abstain'] ?? false) && ! empty($vote['candidate_id']))
+                    ->unique('candidate_id');
+
+                if ($selectedVotes->count() > (int) ($positionVoteLimits[$positionId] ?? 1)) {
+                    return [];
+                }
+
+                return $selectedVotes->all();
+            })
+            ->values()
+            ->all();
+
         if (empty($data['serial_number'])) {
             return $this->recordManualReview($officer->id, null, $data);
         }
@@ -69,6 +91,27 @@ class ScanController extends Controller
             return response()->json([
                 'message' => 'This serial number does not match a ballot issued for this election.',
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $assignedProgram = $officer->program;
+        $assignedYearLevel = $officer->year_level;
+        $assignedPrecinct = $officer->precinct;
+
+        if ($assignedPrecinct && $ballot->precinct) {
+            if ($ballot->precinct !== $assignedPrecinct) {
+                return response()->json([
+                    'message' => 'This ballot does not belong to your assigned precinct.',
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+        } elseif ($assignedProgram || $assignedYearLevel) {
+            $programMismatch = $assignedProgram && $ballot->program && $ballot->program !== $assignedProgram;
+            $yearMismatch = $assignedYearLevel && $ballot->year_level && $ballot->year_level !== $assignedYearLevel;
+
+            if ($programMismatch || $yearMismatch) {
+                return response()->json([
+                    'message' => 'This ballot does not match your assigned department and year level.',
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
         }
 
         if ($ballot->status !== 'issued') {
@@ -94,7 +137,7 @@ class ScanController extends Controller
             );
         }
 
-        $claimed = $this->ballots->claimForCounting($ballot);
+        $claimed = $this->ballots->claimForCounting($ballot, $officer->precinct);
 
         if (! $claimed) {
 

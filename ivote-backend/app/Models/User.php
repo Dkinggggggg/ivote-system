@@ -28,9 +28,14 @@ class User extends Authenticatable
 
     protected $fillable = [
         'name',
+        'username',
         'email',
         'password',
+        'must_change_password',
         'role', // 'admin' | 'committee_officer'
+        'precinct',
+        'program',
+        'year_level',
         'is_active',
     ];
 
@@ -42,6 +47,7 @@ class User extends Authenticatable
 
     protected $casts = [
         'is_active' => 'boolean',
+        'must_change_password' => 'boolean',
     ];
 
     /**
@@ -52,6 +58,19 @@ class User extends Authenticatable
     public function isAdmin(): bool
     {
         return $this->role === 'admin';
+    }
+
+    public function getPrecinctAttribute($value): ?string
+    {
+        if ($value !== null && $value !== '') {
+            return $value;
+        }
+
+        if ($this->role === 'committee_officer' && $this->program && $this->year_level) {
+            return $this->program . ' - ' . $this->year_level;
+        }
+
+        return $value;
     }
 
     /**

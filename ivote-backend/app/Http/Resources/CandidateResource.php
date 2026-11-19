@@ -14,6 +14,7 @@ class CandidateResource extends JsonResource
         return [
             'id' => $this->id,
             'position_id' => $this->position_id,
+            'position_name' => $this->position?->name,
             'name' => $this->name,
             'party' => $this->party,
             'photo_url' => $this->resolvedPhotoUrl(),

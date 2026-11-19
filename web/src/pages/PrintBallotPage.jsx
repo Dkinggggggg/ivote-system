@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { QRCodeCanvas } from 'qrcode.react';
 import apiClient from '../api/apiClient';
 import LoadingSkeleton from '../components/LoadingSkeleton';
 import './PrintBallot.css';
@@ -83,14 +82,13 @@ export default function PrintBallotPage() {
           {ballot.serial_number}
         </div>
 
-        <QRCodeCanvas
-          value={ballot.serial_number}
-          size={90}
-        />
-
       </div>
 
-      <p>Vote wisely!</p>
+      <div className="ballot-instructions">
+        <p><strong>VOTE WISELY!</strong></p>
+        <p>Please vote according to your respective department and batch year. Make sure to follow the correct voting guidelines.</p>
+        <p><strong>⚠️ Any vote that does not follow these instructions will be considered INVALID</strong></p>
+      </div>
 
       <hr />
 

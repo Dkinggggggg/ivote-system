@@ -1,32 +1,28 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Icon from '../components/Icon';
+import BrandMark from '../components/BrandMark';
 import { useAuth } from '../context/AuthContext';
 import './LoginPage.css';
 
-function UserIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5" /><path d="M5 20c.7-3.4 3.1-5.2 7-5.2s6.3 1.8 7 5.2" /></svg>;
-}
-
-function LockIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2" /></svg>;
-}
-
-function EyeIcon({ hidden }) {
-  return hidden
-    ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8" /><path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c5 0 8.5 4.2 9.5 7-.4 1.1-1.2 2.4-2.4 3.6M6.2 6.2C3.9 7.7 2.8 9.8 2.5 12c.6 1.8 2 3.7 4.3 5.1A9.7 9.7 0 0 0 12 19c1 0 1.9-.1 2.7-.4" /></svg>
-    : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.2-7 9.5-7 9.5 7 9.5 7-3.2 7-9.5 7-9.5-7-9.5-7Z" /><circle cx="12" cy="12" r="3" /></svg>;
-}
-
 export default function CenteredLoginPage() {
-  const { login } = useAuth();
+  const { login, changePassword, logout, user } = useAuth();
   const navigate = useNavigate();
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('administrator');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [mustChangePassword, setMustChangePassword] = useState(
+    Boolean(user?.role === 'admin' && user?.must_change_password)
+  );
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordChangeError, setPasswordChangeError] = useState(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   useEffect(() => {
     if (!isSuccess) return undefined;
@@ -43,12 +39,65 @@ export default function CenteredLoginPage() {
     setIsLoading(true);
 
     try {
-      await login(username, password, role === 'administrator' ? 'admin' : 'committee_officer');
+      const authenticatedUser = await login(email, password, role === 'administrator' ? 'admin' : 'committee_officer');
+      if (authenticatedUser.must_change_password) {
+        setCurrentPassword(password);
+        setPassword('');
+        setMustChangePassword(true);
+        return;
+      }
       setIsSuccess(true);
-    } catch {
-      setError('Invalid username or password.');
+    } catch (loginError) {
+      const response = loginError.response;
+      const validationMessage = Object.values(response?.data?.errors || {})
+        .flat()
+        .find((message) => typeof message === 'string');
+
+      if (validationMessage) {
+        setError(validationMessage);
+      } else if (!response) {
+        setError('Unable to reach the sign-in service. Check the server and try again.');
+      } else if (response.status >= 500) {
+        setError('Sign-in service error. Please try again later.');
+      } else {
+        setError('Invalid sign-in credentials.');
+      }
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function handleFirstPasswordChange(event) {
+    event.preventDefault();
+    setPasswordChangeError(null);
+
+    if (newPassword.length < 12) {
+      setPasswordChangeError('Choose a password with at least 12 characters.');
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setPasswordChangeError('The new passwords do not match.');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      await changePassword(currentPassword, newPassword, confirmNewPassword);
+      setMustChangePassword(false);
+      setIsSuccess(true);
+    } catch (changeError) {
+      const response = changeError.response;
+      const validationMessage = Object.values(response?.data?.errors || {})
+        .flat()
+        .find((message) => typeof message === 'string');
+      setPasswordChangeError(
+        validationMessage
+          || response?.data?.message
+          || 'Unable to change your password. Please try again.'
+      );
+    } finally {
+      setIsChangingPassword(false);
     }
   }
 
@@ -80,9 +129,72 @@ export default function CenteredLoginPage() {
               <h1 id="login-title">You're signed in</h1>
               <p className="centered-login-intro">Taking you to your dashboard…</p>
             </div>
-          ) : <>
+          ) : mustChangePassword ? <>
           <header className="centered-login-header">
-            <span className="centered-login-brand">iVote</span>
+            <span className="centered-login-brand"><BrandMark className="centered-login-brand-mark" /></span>
+            <p className="centered-login-kicker">Account security</p>
+            <h1 id="login-title">Create a new password</h1>
+            <p className="centered-login-intro">Your temporary password must be replaced before you continue.</p>
+          </header>
+
+          <form onSubmit={handleFirstPasswordChange}>
+            <div className="centered-login-field">
+              <label htmlFor="temporary-password">Temporary password</label>
+              <span className="centered-login-input-wrap">
+                <span className="centered-login-input-icon"><Icon name="lock" size={17} /></span>
+                <input
+                  id="temporary-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  required
+                />
+              </span>
+            </div>
+
+            <div className="centered-login-field">
+              <label htmlFor="new-password">New password</label>
+              <span className="centered-login-input-wrap">
+                <span className="centered-login-input-icon"><Icon name="lock" size={17} /></span>
+                <input
+                  id="new-password"
+                  type="password"
+                  autoComplete="new-password"
+                  autoFocus
+                  minLength={12}
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  required
+                />
+              </span>
+            </div>
+
+            <div className="centered-login-field">
+              <label htmlFor="confirm-new-password">Confirm new password</label>
+              <span className="centered-login-input-wrap">
+                <span className="centered-login-input-icon"><Icon name="lock" size={17} /></span>
+                <input
+                  id="confirm-new-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmNewPassword}
+                  onChange={(event) => setConfirmNewPassword(event.target.value)}
+                  required
+                />
+              </span>
+            </div>
+
+            {passwordChangeError && <p className="centered-login-error" role="alert">{passwordChangeError}</p>}
+            <button className="centered-login-submit" type="submit" disabled={isChangingPassword}>
+              <span>{isChangingPassword ? 'Updating password…' : 'Set new password'}</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </form>
+          <button className="centered-login-secondary" type="button" onClick={logout}>Sign out</button>
+          </> : <>
+          <header className="centered-login-header">
+            <span className="centered-login-brand"><BrandMark className="centered-login-brand-mark" /></span>
             <p className="centered-login-kicker">Secure access</p>
             <h1 id="login-title">Welcome to iVote!</h1>
             <p className="centered-login-intro">Sign in to continue to the iVote system.</p>
@@ -112,17 +224,17 @@ export default function CenteredLoginPage() {
             </fieldset>
 
             <div className="centered-login-field">
-              <label htmlFor="login-username">Username</label>
+              <label htmlFor="login-email">Email or Username</label>
               <span className="centered-login-input-wrap">
-                <span className="centered-login-input-icon"><UserIcon /></span>
+                <span className="centered-login-input-icon"><Icon name="user" size={17} /></span>
                 <input
-                  id="login-username"
+                  id="login-email"
                   type="text"
-                  name="username"
-                  placeholder="Enter your username"
+                  name="email"
+                  placeholder="Enter your email or username"
                   autoComplete="username"
-                  value={username}
-                  onChange={(event) => setUsername(event.target.value)}
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
                   required
                 />
               </span>
@@ -131,7 +243,7 @@ export default function CenteredLoginPage() {
             <div className="centered-login-field">
               <label htmlFor="login-password">Password</label>
               <span className="centered-login-input-wrap">
-                <span className="centered-login-input-icon"><LockIcon /></span>
+                <span className="centered-login-input-icon"><Icon name="lock" size={17} /></span>
                 <input
                   id="login-password"
                   type={showPassword ? 'text' : 'password'}
@@ -148,7 +260,7 @@ export default function CenteredLoginPage() {
                   onClick={() => setShowPassword((visible) => !visible)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  <EyeIcon hidden={showPassword} />
+                  <Icon name={showPassword ? 'eyeOff' : 'eye'} size={18} />
                 </button>
               </span>
             </div>

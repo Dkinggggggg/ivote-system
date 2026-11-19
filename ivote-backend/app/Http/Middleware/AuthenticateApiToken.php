@@ -33,6 +33,18 @@ class AuthenticateApiToken
 
         $request->setUserResolver(fn () => $user);
 
+        if (
+            $user->role === 'admin'
+            &&
+            $user->must_change_password
+            && ! $request->routeIs('auth.change-password', 'auth.logout')
+        ) {
+            return response()->json([
+                'message' => 'Change your password before continuing.',
+                'must_change_password' => true,
+            ], 423);
+        }
+
         return $next($request);
     }
 }

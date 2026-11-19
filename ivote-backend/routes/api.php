@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\BallotController;
 use App\Http\Controllers\Api\CandidateController;
 use App\Http\Controllers\Api\ElectionController;
 use App\Http\Controllers\Api\PositionController;
+use App\Http\Controllers\Api\PositionCategoryController;
+use App\Http\Controllers\Api\PartyController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ScanController;
 use App\Http\Controllers\Api\UserController;
@@ -15,6 +17,7 @@ use Illuminate\Support\Facades\Route;
 // Public routes
 // ---------------------------------------------------------------------
 Route::post('/login', [AuthController::class, 'login']);
+
 Route::get('/elections/active', [ElectionController::class, 'active']);
 Route::get('/elections/current/public-results', [ElectionController::class, 'currentPublicResults']);
 Route::get('/elections/{election}/public-results', [ElectionController::class, 'publicResults']);
@@ -31,7 +34,8 @@ Route::get('/ballots/verify/{serialNumber}', [BallotController::class, 'verify']
 // ---------------------------------------------------------------------
 Route::middleware('auth.token')->group(function () {
 
-    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::post('/logout', [AuthController::class, 'logout'])->name('auth.logout');
+    Route::post('/change-password', [AuthController::class, 'changePassword'])->name('auth.change-password');
 
     // Elections
     Route::get('/elections', [ElectionController::class, 'index']);
@@ -41,6 +45,7 @@ Route::middleware('auth.token')->group(function () {
     // Positions & Candidates
     Route::get('/positions/{position}/candidates', [CandidateController::class, 'index']);
     Route::get('/elections/{election}/positions', [PositionController::class, 'index']);
+    Route::get('/elections/{election}/position-categories', [PositionCategoryController::class, 'index']);
 
     // Ballots
     Route::get('/ballots/print-selected', [BallotController::class, 'printSelected']);
@@ -73,10 +78,23 @@ Route::middleware(['auth.token', 'admin'])->group(function () {
     Route::post('/elections/{election}/positions', [PositionController::class, 'store']);
     Route::put('/elections/{election}/positions/{position}', [PositionController::class, 'update']);
     Route::delete('/elections/{election}/positions/{position}', [PositionController::class, 'destroy']);
+    Route::post('/elections/{election}/position-categories', [PositionCategoryController::class, 'store']);
+    Route::put('/elections/{election}/position-categories/{category}', [PositionCategoryController::class, 'update']);
+    Route::delete('/elections/{election}/position-categories/{category}', [PositionCategoryController::class, 'destroy']);
 
     // =====================================================
     // Candidates
     // =====================================================
+    Route::get('/elections/{election}/parties', [PartyController::class, 'index']);
+    Route::post('/elections/{election}/parties', [PartyController::class, 'store']);
+    Route::put('/elections/{election}/parties/{id}', [PartyController::class, 'update']);
+    Route::delete('/elections/{election}/parties/{id}', [PartyController::class, 'destroy']);
+
+    Route::get('/elections/{election}/candidates', [CandidateController::class, 'indexForElection']);
+    Route::post('/elections/{election}/candidates', [CandidateController::class, 'storeForElection']);
+    Route::put('/elections/{election}/candidates/{id}', [CandidateController::class, 'updateForElection']);
+    Route::delete('/elections/{election}/candidates/{id}', [CandidateController::class, 'destroyForElection']);
+
     Route::post('/positions/{position}/candidates', [CandidateController::class, 'store']);
     Route::put('/positions/{position}/candidates/{candidate}', [CandidateController::class, 'update']);
     Route::delete('/positions/{position}/candidates/{candidate}', [CandidateController::class, 'destroy']);
@@ -99,6 +117,7 @@ Route::middleware(['auth.token', 'admin'])->group(function () {
     Route::get('/users', [UserController::class, 'index']);
     Route::post('/users', [UserController::class, 'store']);
     Route::put('/users/{user}', [UserController::class, 'update']);
+    Route::patch('/users/{user}/status', [UserController::class, 'setStatus']);
     Route::delete('/users/{user}', [UserController::class, 'destroy']);
 
     // =====================================================

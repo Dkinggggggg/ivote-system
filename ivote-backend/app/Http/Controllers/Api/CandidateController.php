@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreElectionCandidateRequest;
 use App\Http\Requests\StoreCandidateRequest;
 use App\Http\Resources\CandidateResource;
 use App\Models\AuditLog;
+use App\Models\Election;
 use App\Models\Position;
 use App\Repositories\Contracts\CandidateRepositoryInterface;
 use Illuminate\Http\Response;
@@ -28,6 +30,7 @@ class CandidateController extends Controller
         return response()->json([
             'position' => [
                 'id' => $position->id,
+                'election_id' => $position->election_id,
                 'name' => $position->name,
                 'vote_for_count' => $position->vote_for_count,
             ],
@@ -36,6 +39,76 @@ class CandidateController extends Controller
 
             'data' => CandidateResource::collection($candidates),
         ]);
+    }
+
+    public function indexForElection(int $electionId)
+    {
+        Election::findOrFail($electionId);
+
+        return CandidateResource::collection($this->candidates->allForElection($electionId));
+    }
+
+    public function storeForElection(StoreElectionCandidateRequest $request, int $electionId)
+    {
+        $candidate = $this->candidates->create($request->validated());
+
+        AuditLog::create([
+            'user_id' => $request->user()->id,
+            'action' => 'CREATE_CANDIDATE',
+            'description' => 'Created candidate "' . $candidate->name . '".',
+            'ip_address' => $request->ip(),
+        ]);
+
+        return (new CandidateResource($candidate))
+            ->response()
+            ->setStatusCode(Response::HTTP_CREATED);
+    }
+
+    public function updateForElection(StoreElectionCandidateRequest $request, int $electionId, int $id)
+    {
+        $candidate = $this->candidates->find($id);
+
+        abort_if(
+            ! $candidate || ! $candidate->position()->where('election_id', $electionId)->exists(),
+            Response::HTTP_NOT_FOUND,
+            'Candidate not found.'
+        );
+
+        $updated = $this->candidates->update($candidate, $request->validated());
+
+        AuditLog::create([
+            'user_id' => $request->user()->id,
+            'action' => 'UPDATE_CANDIDATE',
+            'description' => 'Updated candidate "' . $updated->name . '".',
+            'ip_address' => $request->ip(),
+        ]);
+
+        return new CandidateResource($updated);
+    }
+
+    public function destroyForElection(int $electionId, int $id)
+    {
+        $candidate = $this->candidates->find($id);
+
+        abort_if(
+            ! $candidate || ! $candidate->position()->where('election_id', $electionId)->exists(),
+            Response::HTTP_NOT_FOUND,
+            'Candidate not found.'
+        );
+
+        $name = $candidate->name;
+        $photoUrl = $candidate->photo_url;
+        $this->candidates->delete($candidate);
+        $this->deleteStoredPhoto($photoUrl);
+
+        AuditLog::create([
+            'user_id' => auth()->id(),
+            'action' => 'DELETE_CANDIDATE',
+            'description' => 'Deleted candidate "' . $name . '".',
+            'ip_address' => request()->ip(),
+        ]);
+
+        return response()->noContent();
     }
 
     public function store(StoreCandidateRequest $request, int $positionId)

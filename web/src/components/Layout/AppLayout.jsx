@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
+import Icon from "../Icon";
 import { ThemeProvider } from "../../context/ThemeContext";
 
 export default function AppLayout() {
@@ -73,7 +74,7 @@ export default function AppLayout() {
           onClick={() => setMobileSidebarOpen(true)}
           aria-label="Open sidebar"
         >
-          ☰ Menu
+          <Icon name="menu" /> Menu
         </button>
 
         {toast && (

@@ -3,7 +3,7 @@ iVote Ballot Recognition Pipeline - Reference Implementation
 Phase 8: Ballot Recognition
 
 This module implements the full pipeline described in the Phase 8 write-up:
-perspective correction -> preprocessing -> thresholding -> QR/OCR serial
+perspective correction -> preprocessing -> thresholding -> OCR serial
 decoding -> OMR bubble detection -> vote validation -> confidence scoring.
 
 Use this to:
@@ -16,14 +16,13 @@ Use this to:
      since re-implementing OpenCV calls from scratch in production without
      a tuned reference is how accuracy problems creep in silently.
 
-Requires: opencv-python, pyzbar, pytesseract, numpy
+Requires: opencv-python, pytesseract, numpy
 """
 
 import os
 import cv2
 import numpy as np
 import re
-qr_detector = cv2.QRCodeDetector()
 import pytesseract
 
 # Configure Tesseract path if found on Windows
@@ -47,11 +46,12 @@ class BallotTemplate:
     In production this would be loaded per-election from the ballot layout
     generated in Phase 5 (FR-3.2), rather than hardcoded.
     """
-    def __init__(self, serial_qr_roi, serial_text_roi, position_bubble_rois, vote_for_counts=None, position_names=None):
-        self.serial_qr_roi = serial_qr_roi          # (x, y, w, h) normalized
+    def __init__(self, serial_text_roi, position_bubble_rois, vote_for_counts=None, position_names=None, department_codes=None, position_department_codes=None):
         self.serial_text_roi = serial_text_roi      # (x, y, w, h) normalized
         self.position_bubble_rois = position_bubble_rois
         self.position_names = position_names or {}
+        self.department_codes = department_codes or {}
+        self.position_department_codes = position_department_codes or {}
         # position_bubble_rois: { position_id: [ {candidate_id, roi:(x,y,w,h)}, ... ] }
         # vote_for_counts: { position_id: int } - how many candidates may be
         # selected for that position (1 for most races, >1 for e.g. "Board
@@ -136,56 +136,8 @@ def preprocess(image):
     return binary
 
 
-def decode_serial_qr(image, template=None):
-    """
-    Decode QR code using OpenCV QRCodeDetector.
-    Tries whole image first, grayscale, then crops to serial_qr_roi if template is provided.
-    """
-    # 1. Whole image
-    try:
-        data, points, _ = qr_detector.detectAndDecode(image)
-        if data and data.strip():
-            return data.strip(), True
-    except Exception:
-        pass
-
-    # 2. Try grayscale if color
-    try:
-        if len(image.shape) == 3:
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            data, points, _ = qr_detector.detectAndDecode(gray)
-            if data and data.strip():
-                return data.strip(), True
-    except Exception:
-        pass
-
-    # 3. If template provided, crop around the QR ROI with margin
-    if template and hasattr(template, "serial_qr_roi"):
-        try:
-            h, w = image.shape[:2]
-            rx, ry, rw, rh = template.serial_qr_roi
-            x1 = max(0, int((rx - 0.06) * w))
-            y1 = max(0, int((ry - 0.04) * h))
-            x2 = min(w, int((rx + rw + 0.06) * w))
-            y2 = min(h, int((ry + rh + 0.06) * h))
-            roi = image[y1:y2, x1:x2]
-            if roi.size > 0:
-                data, _, _ = qr_detector.detectAndDecode(roi)
-                if data and data.strip():
-                    return data.strip(), True
-                if len(roi.shape) == 3:
-                    roi_gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-                    data, _, _ = qr_detector.detectAndDecode(roi_gray)
-                    if data and data.strip():
-                        return data.strip(), True
-        except Exception:
-            pass
-
-    return None, False
-
-
 def decode_serial_ocr(image, template, image_width, image_height):
-    """OCR fallback on the printed serial number region. Returns (serial_or_None, tesseract_confidence)."""
+    """Read the printed serial number region with OCR."""
     try:
         x, y, w, h = _denormalize_roi(template.serial_text_roi, image_width, image_height)
         roi = image[y:y + h, x:x + w]
@@ -215,7 +167,7 @@ def detect_votes(binary_image, template, image_width, image_height, serial_numbe
     """
     results = {}
     serial_match = re.fullmatch(r"(\d{2})(\d{3})\d{4}", serial_number or "")
-    department_codes = {
+    legacy_department_codes = {
         "01": "BSIT",
         "02": "BSHM",
         "03": "BSE",
@@ -227,14 +179,20 @@ def detect_votes(binary_image, template, image_width, image_height, serial_numbe
         "003": "3rd Year",
         "004": "4th Year",
     }
-    department = department_codes.get(serial_match.group(1)) if serial_match else None
+    department = (
+        template.department_codes.get(serial_match.group(1), legacy_department_codes.get(serial_match.group(1)))
+        if serial_match else None
+    )
     year_level = year_codes.get(serial_match.group(2)) if serial_match else None
     scoped_positions = {}
     top = 0.20
 
     for position_id, candidates in template.position_bubble_rois.items():
         position_name = template.position_names.get(position_id, "")
-        if department and position_name.startswith("Governor - ") and position_name != f"Governor - {department}":
+        position_department_code = template.position_department_codes.get(position_id)
+        if serial_match and position_department_code and str(position_department_code).zfill(2) != serial_match.group(1):
+            continue
+        if not position_department_code and department and position_name.startswith("Governor - ") and position_name != f"Governor - {department}":
             continue
         if year_level and position_name.startswith("Batch Representative - ") and position_name != f"Batch Representative - {year_level}":
             continue
@@ -267,7 +225,7 @@ def detect_votes(binary_image, template, image_width, image_height, serial_numbe
                 shaded_candidates.append(candidate["candidate_id"])
 
         vote_for_count = template.vote_for_count(position_id)
-        is_overvote = len(shaded_candidates) > max(1, vote_for_count)
+        is_overvote = len(shaded_candidates) > vote_for_count
         is_abstain = len(shaded_candidates) == 0
 
         results[position_id] = {
@@ -280,7 +238,7 @@ def detect_votes(binary_image, template, image_width, image_height, serial_numbe
     return results
 
 
-def compute_confidence(perspective_ok, perspective_quality, serial_found, serial_source, ocr_confidence, avg_bubble_clarity):
+def compute_confidence(perspective_ok, perspective_quality, serial_found, ocr_confidence, avg_bubble_clarity):
     """
     Combines every stage's signal into one confidence score used to decide
     auto-count vs manual review (Phase 4 activity diagram, step 5).
@@ -288,12 +246,11 @@ def compute_confidence(perspective_ok, perspective_quality, serial_found, serial
     if not perspective_ok or not serial_found:
         return 0.0
 
-    serial_score = 1.0 if serial_source == "qr" else ocr_confidence
     bubble_score = min(1.0, avg_bubble_clarity / FILL_THRESHOLD)
 
     # Weighted: serial correctness matters most (duplicate/attribution integrity),
     # then perspective quality, then bubble clarity.
-    return (0.5 * serial_score) + (0.25 * perspective_quality) + (0.25 * bubble_score)
+    return (0.5 * ocr_confidence) + (0.25 * perspective_quality) + (0.25 * bubble_score)
 
 
 def process_ballot_image(image, template: BallotTemplate):
@@ -303,12 +260,16 @@ def process_ballot_image(image, template: BallotTemplate):
     """
     warped, perspective_ok, perspective_quality = correct_perspective(image)
 
+    serial_number = None
+    ocr_confidence = 0.0
+
     if not perspective_ok:
-        # Fallback: check if the original image already has a readable QR code.
-        # This handles cases where the ballot fills the entire frame or the paper
-        # edge has low contrast against the background table.
-        qr_serial, qr_ok = decode_serial_qr(image, template)
-        if qr_ok:
+        # If the paper boundary is unclear, try OCR on the original frame.
+        image_height, image_width = image.shape[:2]
+        serial_number, ocr_confidence = decode_serial_ocr(
+            image, template, image_width, image_height
+        )
+        if serial_number:
             warped = image
             perspective_ok = True
             perspective_quality = 0.70
@@ -323,26 +284,21 @@ def process_ballot_image(image, template: BallotTemplate):
     height, width = warped.shape[:2]
     binary = preprocess(warped)
 
-    qr_serial, qr_ok = decode_serial_qr(warped, template)
-
-    if qr_ok:
-        serial_number, serial_source, ocr_confidence = qr_serial, "qr", 1.0
-    else:
-        ocr_serial, ocr_confidence = decode_serial_ocr(warped, template, width, height)
-        serial_number, serial_source = ocr_serial, "ocr"
+    if serial_number is None:
+        serial_number, ocr_confidence = decode_serial_ocr(warped, template, width, height)
 
     votes = detect_votes(binary, template, width, height, serial_number)
     avg_clarity = sum(v["clarity"] for v in votes.values()) / len(votes) if votes else 0.0
 
     confidence = compute_confidence(
         perspective_ok, perspective_quality,
-        serial_number is not None, serial_source, ocr_confidence, avg_clarity,
+        serial_number is not None, ocr_confidence, avg_clarity,
     )
 
     return {
         "stage_failed": None if serial_number else "serial_decode",
         "serial_number": serial_number,
-        "decoded_via": serial_source if serial_number else "none",
+        "decoded_via": "ocr" if serial_number else "none",
         "confidence": round(confidence, 3),
         "needs_manual_review": confidence < CONFIDENCE_THRESHOLD or serial_number is None,
         "votes": votes,
