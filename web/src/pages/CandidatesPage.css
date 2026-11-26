@@ -192,14 +192,57 @@
 .candidate-page .position-list-panel .reference-candidate-table .data-table th{padding-top:8px;padding-bottom:8px;font-size:12px}
 .candidate-page .position-list-panel .reference-candidate-table .data-table td{padding-top:8px;padding-bottom:8px;font-size:13px}
 .candidate-page .position-list-panel .reference-row-actions button{height:30px!important;min-height:30px;padding:0 10px!important;font-size:11px!important}
-.review-election-panel{margin-top:0}
-.review-election-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:#c7d4e8;border:1px solid #c7d4e8;border-radius:4px;overflow:hidden}
-.review-election-summary>div{display:flex;flex-direction:column;gap:6px;padding:14px;background:#fff}
-.review-election-summary span{color:var(--muted);font-size:10px;font-weight:650;text-transform:uppercase}
-.review-election-summary strong{overflow-wrap:anywhere;color:#1f3154;font-size:13px}
-.review-content-grid{display:grid;grid-template-columns:1.3fr .9fr;gap:14px;padding:16px}
-.review-section-card{display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid #e1e8f4;border-radius:8px;background:#f8fbff}
-.review-section-card h3{margin:0;color:#1f3154;font-size:14px;font-weight:700}
+.review-election-empty-panel{
+  display:flex;
+  min-height:220px;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  border:1px solid var(--border);
+  border-radius:4px;
+  background:var(--surface);
+  color:var(--muted);
+  text-align:center;
+}
+
+.review-election-empty-panel strong{
+  color:var(--text);
+  font-size:15px;
+}
+
+.review-election-empty-panel span{
+  font-size:12px;
+}
+
+.review-management-header{
+  margin-bottom:14px;
+  align-items:flex-end;
+}
+
+.review-page-kicker{
+  margin:0 0 2px;
+  color:var(--primary-2);
+  font-size:12px;
+  font-weight:800;
+  text-transform:uppercase;
+}
+
+.review-election-panel{margin-top:0;border:1px solid var(--border)!important;border-radius:4px!important;background:var(--surface);box-shadow:none!important}
+.review-election-summary.users-summary-grid{grid-template-columns:repeat(5,minmax(0,1fr));align-items:stretch;margin:0 16px 18px}
+.review-election-summary>div{min-width:0;min-height:82px;height:82px}
+.review-election-summary>div p{
+  margin:0;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.2;
+}
+.review-election-summary>div strong{min-width:0;font-size:24px;line-height:1.05;text-transform:none}
+.review-election-summary>div:nth-child(2) strong{text-transform:capitalize}
+.review-election-summary>div:first-child strong{display:-webkit-box;max-width:100%;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.15;font-size:11px;overflow-wrap:anywhere}
+.review-content-grid{display:grid;grid-template-columns:1.3fr .9fr;gap:14px;padding:16px;padding-top:0}
+.review-section-card{display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid var(--border);border-radius:4px;background:var(--surface)}
+.review-section-card h3{margin:0;color:var(--text);font-size:14px;font-weight:700}
 .review-position-list{display:flex;flex-direction:column;gap:8px}
 .review-position-block{border:1px solid #dfe8f6;border-radius:8px;background:#fff;overflow:hidden}
 .review-position-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:12px 14px;border:0;background:transparent;color:#1f3154;text-align:left;cursor:pointer}
@@ -222,12 +265,13 @@
 .review-checklist>li strong{display:block;margin-bottom:6px;color:#6c2020;font-size:12px}
 .review-checklist>li ul{margin:0;padding-left:18px;color:#5a2530;font-size:12px;line-height:1.7}
 .review-checklist-ok{margin:0;color:#0b6b44;font-size:12px;font-weight:600}
-.review-election-actions{display:flex;justify-content:flex-end;gap:10px;padding:16px;border-top:1px solid #e8edf5;background:#fff}
+.review-election-actions{display:flex;justify-content:flex-end;gap:10px;padding:16px;border-top:1px solid var(--border);background:var(--surface)}
 .visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(max-width:900px){.candidate-page-header{align-items:flex-start;flex-direction:column}.candidate-position-badge{align-self:stretch}}
 @media(max-width:600px){.candidate-context{grid-template-columns:1fr}.candidate-form-card,.candidate-list-card,.party-management-card{padding:18px}.candidate-list-card .table-shell,.party-table-shell{margin:0 -18px}.candidate-list-card .data-table th:first-child,.candidate-list-card .data-table td:first-child,.party-table-shell .data-table th:first-child,.party-table-shell .data-table td:first-child{padding-left:18px}.candidate-form,.party-form{grid-template-columns:1fr}.candidate-form-actions{grid-column:1;grid-row:auto}.party-form-actions{justify-content:flex-start}.candidate-action-column{width:155px}}
 @media(max-width:600px){.candidate-context{grid-template-columns:1fr}.candidate-form-card,.candidate-list-card,.party-management-card{padding:18px}.candidate-modal-overlay{padding:12px}.candidate-modal-dialog{max-height:calc(100vh - 24px);padding:20px}.candidate-modal-form .candidate-form-actions{flex-wrap:wrap}.candidate-list-card .table-shell,.party-table-shell{margin:0 -18px}.candidate-list-tools{width:100%;grid-template-columns:1fr}.candidate-list-heading,.candidate-section-heading{flex-direction:column;align-items:stretch}.candidate-action-column{width:110px}.candidate-page-header,.reference-management-header{align-items:flex-start;flex-direction:column}.reference-management-actions{width:100%;justify-content:space-between}.reference-election-label{max-width:min(55vw,260px)}.candidate-list-heading .candidate-list-tools{grid-template-columns:1fr}.candidate-pagination-summary{width:100%;text-align:center}}
-@media(max-width:760px){.party-management-body{grid-template-columns:1fr}.party-directory{padding:12px 0 0;border-top:1px solid #e1e8f4;border-left:0}.candidate-page .reference-section-card .candidate-form{grid-template-columns:repeat(2,minmax(0,1fr))}.candidate-page .reference-candidate-actions{grid-column:1/-1;justify-content:flex-start}.candidate-list-tools{width:100%;margin-left:39px;flex-wrap:wrap}.reference-list-heading{align-items:flex-start}.review-election-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1100px){.review-election-summary.users-summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.party-management-body{grid-template-columns:1fr}.party-directory{padding:12px 0 0;border-top:1px solid #e1e8f4;border-left:0}.candidate-page .reference-section-card .candidate-form{grid-template-columns:repeat(2,minmax(0,1fr))}.candidate-page .reference-candidate-actions{grid-column:1/-1;justify-content:flex-start}.candidate-list-tools{width:100%;margin-left:39px;flex-wrap:wrap}.reference-list-heading{align-items:flex-start}.review-election-summary.users-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));margin:12px}.review-content-grid{grid-template-columns:1fr;padding:12px;padding-top:0}}
 @media(max-width:760px){.position-management-form{grid-template-columns:repeat(2,minmax(0,1fr))}.position-management-actions{grid-column:1/-1}}
 @media(max-width:520px){.reference-management-header{align-items:flex-start;flex-direction:column}.reference-management-title{align-items:flex-start;gap:10px}.reference-management-icon{flex-basis:40px;width:40px;height:40px}.reference-management-title h1{font-size:21px}.reference-management-actions{width:100%;justify-content:space-between}.reference-election-field{width:100%;min-width:0;flex:1 1 100%}.candidate-page .reference-management-tabs{overflow-x:auto}.candidate-page .reference-management-tabs button{min-width:max-content;padding:0 10px!important;font-size:11px!important}.candidate-page .reference-section-card .candidate-form{grid-template-columns:1fr}.candidate-page .reference-candidate-actions{grid-column:1}.candidate-list-tools{margin-left:0}.candidate-list-tools>label{flex:1;min-width:120px}.candidate-page .candidate-list-tools select,.candidate-page .candidate-search-field{width:100%}.candidate-page .candidate-search-field{flex-basis:100%}.review-election-summary{grid-template-columns:1fr 1fr}.position-management-form{grid-template-columns:1fr}.position-management-actions{grid-column:1}}
 @media(max-width:520px){.election-category-create{align-items:stretch;flex-direction:column}.election-category-create button{align-self:flex-start}.election-category-list{grid-template-columns:1fr}.election-category-item{align-items:flex-start;flex-direction:column}.election-category-actions{align-self:flex-end}}

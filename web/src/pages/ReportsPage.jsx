@@ -11,7 +11,8 @@ export default function ReportsPage() {
   const [precincts, setPrecincts] = useState([]);
   const [selectedPrecinct, setSelectedPrecinct] = useState('all');
   const [report, setReport] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [electionsLoading, setElectionsLoading] = useState(true);
+  const [reportLoading, setReportLoading] = useState(false);
   const [error, setError] = useState('');
   const [expandedWinnerCategories, setExpandedWinnerCategories] = useState({});
 
@@ -22,13 +23,12 @@ export default function ReportsPage() {
   useEffect(() => {
     let active = true;
 
-    apiClient.get('/users')
+    apiClient.get('/precincts')
       .then(({ data }) => {
-        const options = [...new Set(
-          (data.data || [])
-            .filter((user) => user.role === 'committee_officer' && user.precinct)
-            .map((user) => user.precinct)
-        )].sort();
+        const options = (data.data || []).map((precinct) => ({
+          id: String(precinct.id),
+          label: `Precinct ${precinct.precinct_number || precinct.id} · ${precinct.room}`,
+        }));
         if (active) setPrecincts(options);
       })
       .catch(() => {
@@ -43,7 +43,7 @@ export default function ReportsPage() {
       loadResults(selectedElection, selectedPrecinct);
     } else {
       setReport(null);
-      setLoading(false);
+      setReportLoading(false);
     }
   }, [selectedElection, selectedPrecinct]);
 
@@ -54,34 +54,37 @@ export default function ReportsPage() {
   async function loadElections() {
 
     try {
+      setElectionsLoading(true);
+      setError('');
 
       const { data } = await apiClient.get('/elections');
 
       const list = data.data ?? data;
 
       setElections(list);
-      setLoading(false);
 
     } catch (err) {
 
       console.error(err);
       setError('Unable to load elections.');
-      setLoading(false);
 
+    } finally {
+      setElectionsLoading(false);
     }
 
   }
 
   async function loadResults(id, precinct) {
 
-    setLoading(true);
+    setReportLoading(true);
+    setError('');
 
     try {
 
       const { data } = await apiClient.get('/reports/winners', {
         params: {
           election_id: id,
-          ...(precinct !== 'all' ? { precinct } : {}),
+          ...(precinct !== 'all' ? { precinct_id: precinct } : {}),
         },
       });
 
@@ -91,10 +94,11 @@ export default function ReportsPage() {
 
       console.error(err);
       setError('Unable to load election results.');
+      setReport(null);
 
     } finally {
 
-      setLoading(false);
+      setReportLoading(false);
 
     }
 
@@ -516,8 +520,6 @@ SEC ADVISER
 
     printWindow.document.close();
 
-    printWindow.focus();
-
     setTimeout(() => {
       const printPage = printWindow.document.querySelector('.print-page');
       const printableHeight = 281 * 96 / 25.4;
@@ -535,30 +537,25 @@ SEC ADVISER
 
   }
 
-  if (loading) {
+  if (electionsLoading) {
     return <LoadingSkeleton variant="report" label="Loading official election results" />;
   }
 
   return (
 
-    <div className="page-container" style={{ maxWidth: "1280px", margin: "0 auto" }}>
+    <div className="reports-page">
 
-      {/* HEADER */}
-
-      <div className="page-header" style={{ alignItems: "center", marginBottom: 0 }}>
-
+      <header className="reports-page-header">
         <div>
-
           <h1>Official Election Results</h1>
-
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div className="reports-export-actions">
 
           <button
             className="btn link-button"
             onClick={downloadCSV}
-            disabled={!report}
+            disabled={!report || reportLoading}
           >
             <Icon name="download" size={16} /> Download CSV
           </button>
@@ -566,7 +563,7 @@ SEC ADVISER
           <button
             className="btn link-button"
             onClick={downloadPDF}
-            disabled={!report}
+            disabled={!report || reportLoading}
           >
             <Icon name="download" size={16} /> Download PDF
           </button>
@@ -574,13 +571,13 @@ SEC ADVISER
           <button
             className="btn btn-primary"
             onClick={printResults}
-            disabled={!report}
+            disabled={!report || reportLoading}
           >
             <Icon name="print" size={16} /> Print Results
           </button>
 
       </div>
-          </div>
+      </header>
 
       {error && (
         <div className="alert alert-danger">
@@ -588,21 +585,16 @@ SEC ADVISER
         </div>
       )}
 
-      {/* Election Selector */}
+      <section className="reports-filter-panel">
 
-      <div className="card">
-
-        <div className="card-header">
-
-          <strong>Select Election</strong>
-
+        <div className="reports-filter-heading">
+          <strong>Election Report</strong>
         </div>
 
-        <div className="card-body">
+        <div className="reports-filter-controls">
 
-          <div style={{ maxWidth: "420px" }}>
-
-            <select
+            <label className="reports-filter-field">
+              <select
               className="form-control"
               value={selectedElection}
               onChange={(e) => setSelectedElection(e.target.value)}
@@ -618,68 +610,86 @@ SEC ADVISER
                 </option>
               ))}
             </select>
+            </label>
 
+            <label className="reports-filter-field">
             <select
               className="form-control"
               value={selectedPrecinct}
               onChange={(e) => setSelectedPrecinct(e.target.value)}
-              disabled={!selectedElection || precincts.length === 0}
+              disabled={!selectedElection || precincts.length === 0 || reportLoading}
               aria-label="Filter results by precinct"
               style={{ width: "100%" }}
             >
               <option value="all">All Precincts</option>
               {precincts.map((precinct) => (
-                <option key={precinct} value={precinct}>{precinct}</option>
+                <option key={precinct.id} value={precinct.id}>{precinct.label}</option>
               ))}
             </select>
+            </label>
 
+        </div>
+
+      </section>
+
+      {reportLoading && selectedElection && (
+        <div className="loading-skeleton loading-skeleton-report-content" role="status" aria-live="polite" aria-busy="true" aria-label="Loading report data">
+          <div className="skeleton-summary-grid skeleton-summary-grid-3">
+            {Array.from({ length: 3 }, (_, index) => (
+              <div className="skeleton-summary-card" key={index}>
+                <div className="skeleton-block skeleton-summary-icon" aria-hidden="true" />
+                <div className="skeleton-summary-copy">
+                  <div className="skeleton-block skeleton-summary-label" aria-hidden="true" />
+                  <div className="skeleton-block skeleton-summary-value" aria-hidden="true" />
+                </div>
+              </div>
+            ))}
           </div>
-
-      </div>
+          <div className="skeleton-panel skeleton-table-panel">
+            <div className="skeleton-block skeleton-section-title" aria-hidden="true" />
+            <div className="skeleton-table-head" aria-hidden="true">
+              <div className="skeleton-block" /><div className="skeleton-block" /><div className="skeleton-block" /><div className="skeleton-block" /><div className="skeleton-block" />
+            </div>
+            <div className="skeleton-table-rows">
+              {Array.from({ length: 8 }, (_, index) => (
+                <div className="skeleton-table-row" key={index}>
+                  <div className="skeleton-block skeleton-cell skeleton-cell-sm" aria-hidden="true" />
+                  <div className="skeleton-block skeleton-cell skeleton-cell-lg" aria-hidden="true" />
+                  <div className="skeleton-block skeleton-cell skeleton-cell-md" aria-hidden="true" />
+                  <div className="skeleton-block skeleton-cell skeleton-cell-md" aria-hidden="true" />
+                  <div className="skeleton-block skeleton-cell skeleton-cell-sm" aria-hidden="true" />
+                </div>
+              ))}
+            </div>
           </div>
+        </div>
+      )}
 
-      {report && (
+      {!reportLoading && report && (
         <>
-          {/* Summary Cards */}
+          <div className="reports-summary-grid">
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
-              gap: "16px",
-              marginBottom: "24px",
-            }}
-          >
-
-            <ReportMetric label="Election" value={report.election} borderColor="var(--primary-2)" />
-            <ReportMetric label="Precinct" value={report.precinct || 'All Precincts'} borderColor="var(--accent)" />
-            <ReportMetric
-              label="Status"
-              value={String(report.status).toUpperCase()}
-              valueColor={report.status === "Closed" ? "var(--danger)" : "var(--success)"}
-              borderColor="var(--primary-2)"
-            />
-            <ReportMetric label="Ballots" value={report.total_ballots} borderColor="var(--accent)" />
+            <ReportMetric label="Ballots" value={report.total_ballots} borderColor="var(--primary-2)" icon="ballots" />
             <ReportMetric
               label="Valid Ballots"
               value={report.valid_ballots}
-              valueColor="var(--success)"
-              borderColor="var(--primary-2)"
+              valueColor="var(--text)"
+              borderColor="var(--warning)"
+              icon="check"
             />
             <ReportMetric
               label="Invalid Ballots"
               value={report.invalid_ballots}
-              valueColor="var(--danger)"
+              valueColor="var(--text)"
               borderColor="var(--primary-2)"
+              icon="review"
             />
 
           </div>
 
-          {/* Winners Table */}
+          <section className="reports-winners-panel">
 
-          <div className="card">
-
-            <div className="card-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+            <div className="reports-winners-header">
 
               <h2 className="text-xl font-semibold">
                 Official Winners
@@ -691,7 +701,7 @@ SEC ADVISER
 
             </div>
 
-            <div className="table-shell" style={{ overflowX: "auto" }}>
+            <div className="table-shell reports-table-shell">
 
               <table className="data-table" style={{ minWidth: "760px" }}>
 
@@ -768,7 +778,7 @@ SEC ADVISER
 
             </div>
 
-          </div>
+          </section>
 
         </>
       )}
@@ -779,14 +789,19 @@ SEC ADVISER
 
 }
 
-function ReportMetric({ label, value, valueColor, borderColor = "var(--primary-2)" }) {
+function ReportMetric({ label, value, valueColor, borderColor = "var(--primary-2)", icon }) {
   return (
-    <div className="dashboard-card" style={{ borderLeft: `5px solid ${borderColor}` }}>
-      <div style={{ color: "var(--muted)", fontSize: "13px", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-        {label}
-      </div>
-      <div style={{ fontSize: "18px", fontWeight: 700, color: valueColor || "var(--primary)" }}>
-        {value}
+    <div className="reports-summary-card" style={{ borderLeft: `3px solid ${borderColor}` }}>
+      <span className="reports-summary-icon" style={{ color: borderColor }}>
+        <Icon name={icon} size={20} />
+      </span>
+      <div>
+        <div style={{ color: "var(--muted)", fontSize: "12px", marginBottom: "2px" }}>
+          {label}
+        </div>
+        <div style={{ fontSize: "24px", lineHeight: "1", fontWeight: 700, color: valueColor || "var(--primary)" }}>
+          {value}
+        </div>
       </div>
     </div>
   );

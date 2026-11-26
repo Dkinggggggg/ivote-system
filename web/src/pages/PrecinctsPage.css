@@ -1,0 +1,71 @@
+.precincts-page{max-width:1280px;margin:0 auto}
+.precincts-page .users-page-header{align-items:center;margin-bottom:20px}
+.precincts-page .users-page-header h1{margin:0}
+.precinct-list-section{padding:22px;background:var(--surface);border:1px solid var(--border);margin-bottom:22px}
+.precinct-modal-overlay{position:fixed;inset:0;z-index:1400;display:grid;place-items:center;padding:24px;background:rgba(11,44,77,.46)}
+.precinct-form-panel{width:min(720px,100%);max-height:min(800px,calc(100vh - 48px));overflow:auto;padding:30px 32px;background:var(--surface);border:1px solid var(--border);border-top:4px solid var(--primary-2);border-radius:6px;box-shadow:0 22px 55px rgba(11,44,77,.24);animation:modal-in .2s ease}
+.precinct-modal-header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-bottom:20px;border-bottom:1px solid var(--border)}
+.precinct-dialog-heading{display:flex;align-items:center;gap:14px;min-width:0}
+.precinct-dialog-icon{display:grid;place-items:center;flex:none;width:44px;height:44px;border:1px solid rgba(36,95,229,.2);border-radius:6px;background:var(--surface-soft);color:var(--primary-2)}
+.precinct-dialog-eyebrow{display:block;margin-bottom:3px;color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase}
+.precinct-modal-close{display:grid;place-items:center;flex:none;width:36px;height:36px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);cursor:pointer}
+.precinct-modal-close:hover:not(:disabled){background:var(--surface-soft)}
+.precinct-form-panel h2,.precinct-list-heading h2{margin:0;color:var(--text);font-size:21px}
+.precinct-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 24px;margin-top:24px}
+.precinct-form>label{display:flex;flex-direction:column;gap:8px;min-width:0;color:var(--text);font-size:13px;font-weight:650}
+.precinct-form input,.precinct-form select{min-width:0;width:100%}
+.precinct-form>label>span:first-child{color:var(--text);font-size:13px;font-weight:650}
+.precinct-form>label input,.precinct-form>label select{min-height:46px;border-radius:4px}
+.precinct-form small,.precincts-table td small{color:var(--muted);font-size:12px;font-weight:400;line-height:1.45}
+.precinct-year-field{grid-column:1/-1;min-width:0;margin:0;padding:0;border:0}
+.precinct-year-field legend{margin-bottom:8px;color:var(--text);font-size:13px;font-weight:650}
+.precinct-year-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:stretch}
+.precinct-year-options label{display:flex;align-items:center;gap:10px;min-height:46px;padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;transition:background-color .15s ease,border-color .15s ease}
+.precinct-year-options label.is-selected{border-color:var(--primary-2);background:var(--surface-soft);color:var(--primary)}
+.precinct-year-options input{width:16px;height:16px;min-height:16px;margin:0;accent-color:var(--primary-2)}
+.precinct-year-options label:focus-within{outline:2px solid var(--primary-2);outline-offset:2px}
+.precinct-year-field>small{display:block;margin-top:6px}
+.precinct-form-actions{grid-column:1/-1;display:flex;align-items:center;justify-content:flex-end;gap:10px;padding-top:18px;border-top:1px solid var(--border)}
+.precinct-form-actions button{min-height:42px}
+.precinct-cancel-button{padding:9px 14px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-weight:600;cursor:pointer}
+.precinct-cancel-button:hover{background:var(--surface-soft)}
+.precinct-list-section{padding-bottom:0}
+.precinct-list-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.precinct-list-heading>span{color:var(--muted);font-size:13px}
+.precincts-toolbar{display:grid;grid-template-columns:minmax(240px,1fr);gap:10px;align-items:end;margin-bottom:12px}
+.precincts-search-field{position:relative;display:flex;min-width:0;align-items:center}
+.precincts-search-field svg{position:absolute;left:12px;color:var(--muted);pointer-events:none}
+.precincts-search-field input{width:100%;min-height:42px;padding:9px 12px 9px 38px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font:inherit}
+.precincts-search-field input::placeholder{color:var(--muted)}
+.precincts-table{width:100%;min-width:1040px;table-layout:fixed}
+.precincts-table th:nth-child(1){width:18%}
+.precincts-table th:nth-child(2){width:26%}
+.precincts-table th:nth-child(3){width:19%}
+.precincts-table th:nth-child(4){width:37%}
+.precincts-table td:nth-child(1){white-space:nowrap}
+.precincts-table td small{display:block;margin-top:4px}
+.precinct-row-actions{display:flex;gap:8px}
+.precinct-assign-button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:32px;padding:5px 9px;border:1px solid rgba(36,95,229,.28);border-radius:4px;background:#eef4ff;box-shadow:none;color:var(--primary);font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;transition:background-color .15s ease,border-color .15s ease,transform .15s ease}
+.precinct-assign-button:hover{background:#e3edff;border-color:var(--primary-2)}
+.precinct-assign-button:focus-visible{outline:3px solid rgba(36,95,229,.24);outline-offset:2px}
+.precinct-assign-button.is-assigned{border-color:var(--border);background:var(--surface);box-shadow:none;color:var(--primary)}
+.precinct-assign-button.is-assigned:hover{background:var(--surface-soft);border-color:var(--primary-2);transform:translateY(-1px)}
+.precinct-commissioner-dialog{width:min(480px,100%)}
+.precinct-commissioner-context{margin:12px 0 0;color:var(--muted);font-size:13px}
+.precinct-commissioner-form{display:grid;gap:18px;margin-top:18px}
+.precinct-commissioner-form>label{display:flex;flex-direction:column;gap:8px;color:var(--text);font-size:13px;font-weight:650}
+.precinct-commissioner-form select{width:100%}
+.precincts-empty{text-align:center;padding:32px!important;color:var(--muted)}
+.precincts-feedback{margin:0 0 16px;padding:11px 14px;border:1px solid #efcaca;background:#fff5f5;color:var(--danger);font-size:13px}
+@media(max-width:700px){
+  .precincts-page .users-page-header{align-items:flex-start;flex-direction:column}
+  .precinct-form{grid-template-columns:minmax(0,1fr);gap:15px}
+  .precinct-form-actions{grid-column:1}
+  .precinct-form-panel{padding:22px 18px}
+  .precinct-year-field{grid-column:1}
+  .precinct-year-options{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .precinct-list-section{padding:16px}
+  .precinct-modal-overlay{padding:14px}
+  .precinct-list-section .table-shell{overflow-x:auto}
+  .precincts-table{min-width:1040px}
+}

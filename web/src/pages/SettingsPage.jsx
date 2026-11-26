@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import LoadingSkeleton from '../components/LoadingSkeleton';
 import { useAuth } from '../context/AuthContext';
+import Icon from '../components/Icon';
+import './SettingsPage.css';
 
 export default function SettingsPage() {
 
@@ -9,6 +12,12 @@ export default function SettingsPage() {
   const [isConfirmingLogout, setIsConfirmingLogout] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isLogoutComplete, setIsLogoutComplete] = useState(false);
+
+  if (!user) {
+    return <LoadingSkeleton variant="settings" label="Loading settings" />;
+  }
+
+  const roleLabel = user.role ? user.role.replace(/_/g, ' ') : '—';
 
   const infoRows = [
     ['System Name', 'iVote'],
@@ -29,154 +38,67 @@ export default function SettingsPage() {
   }
 
   return (
+    <div className="settings-page">
+      <header className="settings-page-header">
+        <h1>System Settings</h1>
+      </header>
 
-    <div>
-
-      <h1 style={{ marginBottom: "25px" }}>
-        System Settings
-      </h1>
-
-      {/* Summary Cards */}
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
-          gap: "20px",
-          marginBottom: "35px",
-        }}
-      >
-
-        <div
-          style={{
-            background: "#fff",
-            padding: "22px",
-            borderRadius: "12px",
-            borderLeft: "5px solid var(--primary-2)",
-            boxShadow: "0 3px 10px rgba(0,0,0,.08)",
-          }}
-        >
-          <h3>Logged In</h3>
-
-          <h2 style={{ color: "var(--primary-2)" }}>
-            {user?.name}
-          </h2>
-
+      <div className="settings-overview" aria-label="Account and system overview">
+        <div className="settings-overview-item">
+          <span className="settings-overview-icon"><Icon name="user" size={18} /></span>
+          <div>
+            <span>Logged In</span>
+            <strong>{user.name || '—'}</strong>
+          </div>
         </div>
-
-        <div
-          style={{
-            background: "#fff",
-            padding: "22px",
-            borderRadius: "12px",
-            borderLeft: "5px solid var(--accent)",
-            boxShadow: "0 3px 10px rgba(0,0,0,.08)",
-          }}
-        >
-          <h3>Account Role</h3>
-
-          <h2 style={{ color: "var(--accent)" }}>
-            {user?.role.replace('_', ' ')}
-          </h2>
-
+        <div className="settings-overview-item is-accent">
+          <span className="settings-overview-icon"><Icon name="settings" size={18} /></span>
+          <div>
+            <span>Account Role</span>
+            <strong>{roleLabel}</strong>
+          </div>
         </div>
-
-        <div
-          style={{
-            background: "#fff",
-            padding: "22px",
-            borderRadius: "12px",
-            borderLeft: "5px solid var(--primary-2)",
-            boxShadow: "0 3px 10px rgba(0,0,0,.08)",
-          }}
-        >
-          <h3>System Version</h3>
-
-          <h2 style={{ color: "var(--primary-2)" }}>
-            v1.0
-          </h2>
-
+        <div className="settings-overview-item">
+          <span className="settings-overview-icon"><Icon name="clipboard" size={18} /></span>
+          <div>
+            <span>System Version</span>
+            <strong>v1.0</strong>
+          </div>
         </div>
-
       </div>
 
-      {/* System Information */}
+      <section className="settings-section" aria-labelledby="settings-information-title">
+        <header className="settings-section-header">
+          <div>
+            <h2 id="settings-information-title">System Information</h2>
+          </div>
+        </header>
+        <dl className="settings-information-list">
+          {infoRows.map(([label, value]) => (
+            <div className="settings-information-row" key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
 
-      <div
-        style={{
-          background: "#fff",
-          padding: "25px",
-          borderRadius: "12px",
-          boxShadow: "0 3px 10px rgba(0,0,0,.08)",
-          marginBottom: "25px",
-        }}
-      >
-
-        <h2 style={{ marginBottom: "20px" }}>
-          System Information
-        </h2>
-
-        <div className="table-shell">
-
-        <table style={{ width: "100%" }}>
-
-          <tbody>
-
-            {infoRows.map(([label, value]) => (
-
-              <tr key={label}>
-
-                <td style={{ padding: "10px", fontWeight: "600" }}>
-                  {label}
-                </td>
-
-                <td>{value}</td>
-
-              </tr>
-
-            ))}
-
-          </tbody>
-
-        </table>
-
+      <section className="settings-section settings-account-section" aria-labelledby="settings-account-title">
+        <header className="settings-section-header">
+          <div>
+            <h2 id="settings-account-title">Account</h2>
+            <p>Signed in as <strong>{user.name || '—'}</strong> · {roleLabel}</p>
+          </div>
+        </header>
+        <div className="settings-account-actions">
+          <button
+            className="logout-trigger-btn"
+            onClick={() => setIsConfirmingLogout(true)}
+          >
+            Log Out
+          </button>
         </div>
-
-      </div>
-
-      {/* Account */}
-
-      <div
-        style={{
-          background: "#fff",
-          padding: "25px",
-          borderRadius: "12px",
-          boxShadow: "0 3px 10px rgba(0,0,0,.08)",
-        }}
-      >
-
-        <h2 style={{ marginBottom: "20px" }}>
-          Account
-        </h2>
-
-        <p>
-          You are currently signed in as
-          <strong> {user?.name}</strong>.
-        </p>
-
-        <p style={{ marginBottom: "20px" }}>
-          Role:
-          <strong> {user?.role.replace('_', ' ')}</strong>
-        </p>
-
-        <button
-          className="logout-trigger-btn"
-          onClick={() => setIsConfirmingLogout(true)}
-        >
-          Log Out
-        </button>
-
-      </div>
+      </section>
 
       {isLogoutComplete && (
         <div className="logout-success-overlay" role="status" aria-live="polite">

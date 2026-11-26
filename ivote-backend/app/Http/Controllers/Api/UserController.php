@@ -9,6 +9,7 @@ use App\Models\AuditLog;
 use App\Repositories\Contracts\UserRepositoryInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 /**
@@ -79,6 +80,44 @@ class UserController extends Controller
         ]);
 
         return new UserResource($updated);
+    }
+
+    public function resetPassword(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'password' => [
+                'required',
+                'string',
+                'min:8',
+                'max:16',
+                'confirmed',
+                'regex:/[A-Z]/',
+                'regex:/[a-z]/',
+                'regex:/[0-9]/',
+                'regex:/[^A-Za-z0-9]/',
+            ],
+        ]);
+
+        $user = $this->users->find($id);
+
+        abort_if(!$user, Response::HTTP_NOT_FOUND, 'User not found.');
+
+        $user->forceFill([
+            'password' => Hash::make($data['password']),
+            'must_change_password' => false,
+        ])->save();
+
+        AuditLog::create([
+            'user_id' => $request->user()->id,
+            'action' => 'Reset Password',
+            'description' => 'Reset password for "' . $user->name . '"',
+            'ip_address' => $request->ip(),
+        ]);
+
+        return response()->json([
+            'message' => 'Password reset successfully.',
+            'data' => new UserResource($user),
+        ]);
     }
 
     public function setStatus(Request $request, int $id)

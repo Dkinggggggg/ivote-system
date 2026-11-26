@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 export default function ProtectedRoute() {
   const { user } = useAuth();
   const location = useLocation();
-  const scannerRoutes = ['/scanner', '/scanner-monitoring'];
+  const scannerRoutes = ['/scanner'];
 
   if (!user) {
     return <Navigate to="/login" replace />;

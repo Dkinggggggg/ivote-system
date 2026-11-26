@@ -123,6 +123,12 @@ class AuthController extends Controller
         ]);
         $user = $request->user();
 
+        abort_if(
+            $user->role !== 'admin',
+            403,
+            'Only administrators can change account passwords.'
+        );
+
         if (! Hash::check($data['current_password'], $user->password)) {
             throw ValidationException::withMessages([
                 'current_password' => 'The temporary password is incorrect.',

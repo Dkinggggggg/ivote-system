@@ -18,6 +18,7 @@ import {
   LayoutDashboard,
   List,
   LockKeyhole,
+  MapPin,
   Menu,
   Moon,
   Pencil,
@@ -62,6 +63,7 @@ const icons = {
   home: Home,
   list: List,
   lock: LockKeyhole,
+  'Manage Precinct': MapPin,
   menu: Menu,
   moon: Moon,
   parties: Flag,
@@ -86,7 +88,6 @@ const icons = {
   Reports: FileText,
   Scanner: ScanLine,
   Settings,
-  'Scanner Monitoring': ScanLine,
   Users: UsersRound,
 };
 

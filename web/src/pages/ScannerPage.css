@@ -1,15 +1,16 @@
 .scanner-page {
-  min-height: 100vh;
-  padding: 24px;
-  background:
-    linear-gradient(90deg, transparent 0 49.9%, rgba(11, 44, 77, 0.025) 50%, transparent 50.1%),
-    var(--page-bg);
+  width: 100%;
+  max-width: 1280px;
+  min-width: 0;
+  margin: 0 auto;
+  padding: 0;
+  background: transparent;
 }
 
 .scanner-header {
-  max-width: 1120px;
-  margin: 0 auto 18px;
-  padding-bottom: 14px;
+  max-width: none;
+  margin: 0 0 20px;
+  padding: 0 0 16px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -20,8 +21,8 @@
 }
 
 .scanner-brand-mark {
-  width: 48px;
-  height: 48px;
+  width: 42px;
+  height: 42px;
   flex: 0 0 auto;
   display: block;
 }
@@ -36,24 +37,28 @@
 
 .scanner-header h1 {
   margin: 0;
-  color: var(--primary);
-  font-size: 22px;
+  color: var(--text);
+  font-size: 26px;
 }
 
 .scanner-body {
   display: grid;
   grid-template-columns: 1fr;
   gap: 20px;
-  max-width: 1120px;
+  max-width: none;
   margin: 0 auto;
   align-items: start;
 }
 
+.scanner-controls-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.scanner-controls-heading h2{margin:0;color:var(--text);font-size:16px}
+.scanner-controls-heading>span{flex:none;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface-soft);color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase}
+
 .preview-shell {
   position: relative;
   background: #000;
-  border: 5px solid var(--surface);
-  border-radius: 6px;
+  border: 4px solid var(--surface);
+  border-radius: 4px;
   overflow: hidden;
   aspect-ratio: 3 / 4;
   width: 100%;
@@ -268,28 +273,35 @@
 }
 
 .controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(0,1fr);
+  gap: 10px;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: stretch;
   min-width: 0;
+  align-content: start;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
 }
 
 .controls > button,
 .controls > .secondary,
 .controls > .primary,
 .controls > .camera-select {
-  flex-shrink: 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
   white-space: nowrap;
 }
 
 .controls > .secondary {
-  min-width: 170px;
+  padding: 10px 14px;
 }
 
 .controls > .primary {
-  min-width: 190px;
+  min-height: 48px;
 }
 
 .controls > .camera-select {
@@ -298,9 +310,9 @@
 
 .offline-capture-queue {
   min-width: 0;
-  padding: 14px;
+  padding: 16px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 4px;
   background: var(--surface);
 }
 
@@ -373,7 +385,7 @@
   min-width: 0;
   padding: 9px 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--surface-soft);
 }
 
@@ -407,7 +419,7 @@
 
 .offline-remove-button {
   border: 1px solid #e6bcbc;
-  border-radius: 6px;
+  border-radius: 4px;
   background: #fff;
   color: #9c3434;
   cursor: pointer;
@@ -422,7 +434,7 @@
   color: var(--primary);
   border: none;
   padding: 10px 16px;
-  border-radius: 8px;
+  border-radius: 4px;
   cursor: pointer;
   font-weight: 600;
   transition: background-color .15s ease, box-shadow .15s ease, opacity .15s ease;
@@ -445,7 +457,7 @@
   color: #fff;
   border: none;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: 4px;
   cursor: pointer;
   box-shadow: 0 2px 6px rgba(61,108,153,0.18);
   transition: background-color .12s ease, box-shadow .12s ease, opacity .12s ease;
@@ -467,16 +479,6 @@
 .secondary:focus {
   outline: 3px solid rgba(61,108,153,0.24);
   outline-offset: 2px;
-}
-
-.camera-select {
-  padding: 9px 12px;
-  border-radius: 8px;
-  border: 1px solid #ccc;
-  background: #fff;
-  color: #333;
-  font-size: 14px;
-  max-width: 220px;
 }
 
 .error {
@@ -507,7 +509,7 @@
   color: #146c43;
   border: 1px solid #a3cfbb;
   padding: 12px 16px;
-  border-radius: 10px;
+  border-radius: 4px;
   font-weight: 700;
   margin-top: 12px;
   text-align: center;
@@ -520,7 +522,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-top: 4px solid var(--accent);
-  padding: 16px;
+  padding: 18px;
   border-radius: 4px;
   box-shadow: 0 8px 20px rgba(11, 44, 77, 0.08);
 }
@@ -598,7 +600,7 @@
 
 @media (max-width: 520px) {
   .scanner-page {
-    padding: 16px 12px;
+    padding: 0;
   }
 
   .scanner-brand-mark {
@@ -606,9 +608,9 @@
     height: 42px;
   }
 
-  .scanner-header h1 {
-    font-size: 19px;
-  }
+  .scanner-header h1 {font-size:21px}
+
+  .controls{padding:12px}
 
   .offline-queue-item {
     align-items: flex-start;

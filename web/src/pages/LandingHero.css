@@ -20,8 +20,13 @@
   position: absolute;
   z-index: -1;
   inset: 0;
-  background: radial-gradient(ellipse at center, transparent 25%, rgba(3, 9, 25, .24) 100%);
+  background:
+    linear-gradient(rgba(180, 201, 242, .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(180, 201, 242, .045) 1px, transparent 1px),
+    radial-gradient(ellipse at center, transparent 25%, rgba(3, 9, 25, .38) 100%);
+  background-size: 48px 48px, 48px 48px, 100% 100%;
   content: '';
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, .72), #000 30%, rgba(0, 0, 0, .28));
   pointer-events: none;
 }
 
@@ -30,11 +35,17 @@
   z-index: 1;
   width: min(100%, 1120px);
   text-align: center;
-  animation: hero-arrive 900ms cubic-bezier(.2, .7, .25, 1) both;
 }
 
 .ivote-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
   margin: 0 0 25px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 183, 0, .22);
+  border-radius: 3px;
+  background: rgba(6, 15, 40, .48);
   color: var(--hero-gold);
   font-family: Poppins, sans-serif;
   font-size: 14px;
@@ -42,6 +53,16 @@
   letter-spacing: .12em;
   line-height: 1.5;
   text-transform: uppercase;
+  animation: hero-arrive 520ms 80ms cubic-bezier(.2, .7, .25, 1) both;
+}
+
+.ivote-hero__eyebrow::before,
+.ivote-hero__eyebrow::after {
+  width: 22px;
+  height: 1px;
+  background: var(--hero-gold);
+  content: '';
+  opacity: .75;
 }
 
 .ivote-hero__title {
@@ -62,7 +83,7 @@
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: hero-text-sweep 3s ease-in-out infinite;
+  animation: hero-text-sweep 1.25s 650ms cubic-bezier(.2, .7, .25, 1) both;
 }
 
 .ivote-hero__title span + span {
@@ -79,14 +100,15 @@
   gap: 15px;
   margin-top: 45px;
   overflow: hidden;
-  border: 0;
+  border: 1px solid rgba(255, 214, 104, .85);
   border-radius: 4px;
-  background: var(--hero-gold);
-  box-shadow: 0 8px 24px rgba(255, 183, 0, .16);
+  background: linear-gradient(135deg, #ffd45f 0%, var(--hero-gold) 58%, #e69a00 100%);
+  box-shadow: 0 8px 24px rgba(255, 183, 0, .16), inset 0 1px rgba(255, 255, 255, .38);
   color: var(--hero-navy);
   cursor: pointer;
   font: 700 18px Poppins, sans-serif;
   transition: box-shadow 220ms ease, transform 220ms ease;
+  animation: hero-arrive 560ms 420ms cubic-bezier(.2, .7, .25, 1) both;
 }
 
 .ivote-hero__button::before {
@@ -158,7 +180,7 @@
 
 @keyframes hero-text-sweep {
   0% { background-position: 135% 50%; }
-  20%, 100% { background-position: -35% 50%; }
+  100% { background-position: -35% 50%; }
 }
 
 @keyframes button-light-sweep {
@@ -182,8 +204,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ivote-hero__content,
+  .ivote-hero__eyebrow,
   .ivote-hero__title span,
+  .ivote-hero__button,
   .ivote-hero__particles span {
     animation: none;
   }

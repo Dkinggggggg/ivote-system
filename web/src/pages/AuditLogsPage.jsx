@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import apiClient from '../api/apiClient';
 import PaginationControls from '../components/PaginationControls';
 import LoadingSkeleton from '../components/LoadingSkeleton';
+import Icon from '../components/Icon';
 
 export default function AuditLogsPage() {
 
@@ -9,6 +10,7 @@ export default function AuditLogsPage() {
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
+  const [actionFilter, setActionFilter] = useState('all');
 
   useEffect(() => {
     loadLogs();
@@ -57,12 +59,18 @@ export default function AuditLogsPage() {
 
   const filtered = logs.filter((log) => {
     const normalizedSearch = search.trim().toLowerCase();
+    const matchesSearch = !normalizedSearch || buildSearchText(log).includes(normalizedSearch);
+    const actionValue = String(log.action || '').toLowerCase();
 
-    if (!normalizedSearch) {
-      return true;
-    }
+    const matchesAction = actionFilter === 'all'
+      || (actionFilter === 'login' && actionValue.includes('login'))
+      || (actionFilter === 'create' && actionValue.includes('create'))
+      || (actionFilter === 'update' && actionValue.includes('update'))
+      || (actionFilter === 'delete' && actionValue.includes('delete'))
+      || (actionFilter === 'scan' && actionValue.includes('scan'))
+      || (actionFilter === 'other' && !['login', 'create', 'update', 'delete', 'scan'].some((term) => actionValue.includes(term)));
 
-    return buildSearchText(log).includes(normalizedSearch);
+    return matchesSearch && matchesAction;
   });
 
   const pageSize = 8;
@@ -75,7 +83,7 @@ export default function AuditLogsPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search]);
+  }, [search, actionFilter]);
 
   const totalLogs = logs.length;
 
@@ -163,105 +171,70 @@ export default function AuditLogsPage() {
 
   return (
 
-    <div>
+    <div className="audit-page">
 
-      <h1 style={{ marginBottom: "25px" }}>
-        Audit Logs
-      </h1>
+      <header className="audit-page-header">
+        <div>
+          <h1>Audit Logs</h1>
+        </div>
+      </header>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
-          gap: "20px",
-          marginBottom: "35px",
-        }}
-      >
+      <div className="audit-summary-grid">
 
-        <div
-          style={{
-            background: "#fff",
-            padding: "22px",
-            borderRadius: "12px",
-            borderLeft: "5px solid var(--primary-2)",
-            boxShadow: "0 3px 10px rgba(0,0,0,.08)",
-          }}
-        >
-          <h3>Total Logs</h3>
-
-          <h1 style={{ color: "var(--primary-2)" }}>
-            {totalLogs}
-          </h1>
-
+        <div className="audit-summary-card">
+          <span className="audit-summary-icon"><Icon name="audit" size={20} /></span>
+          <div>
+            <p>Total Logs</p>
+            <strong>{totalLogs}</strong>
+          </div>
         </div>
 
-        <div
-          style={{
-            background: "#fff",
-            padding: "22px",
-            borderRadius: "12px",
-            borderLeft: "5px solid var(--accent)",
-            boxShadow: "0 3px 10px rgba(0,0,0,.08)",
-          }}
-        >
-
-          <h3>User Logs</h3>
-
-          <h1 style={{ color: "var(--accent)" }}>
-            {userLogs}
-          </h1>
-
+        <div className="audit-summary-card">
+          <span className="audit-summary-icon is-accent"><Icon name="user" size={20} /></span>
+          <div>
+            <p>User Logs</p>
+            <strong>{userLogs}</strong>
+          </div>
         </div>
 
-        <div
-          style={{
-            background: "#fff",
-            padding: "22px",
-            borderRadius: "12px",
-            borderLeft: "5px solid var(--primary-2)",
-            boxShadow: "0 3px 10px rgba(0,0,0,.08)",
-          }}
-        >
-
-          <h3>System Logs</h3>
-
-          <h1 style={{ color: "var(--primary-2)" }}>
-            {systemLogs}
-          </h1>
-
+        <div className="audit-summary-card">
+          <span className="audit-summary-icon"><Icon name="settings" size={20} /></span>
+          <div>
+            <p>System Logs</p>
+            <strong>{systemLogs}</strong>
+          </div>
         </div>
 
       </div>
 
-      <div
-        style={{
-          background: "#fff",
-          padding: "25px",
-          borderRadius: "12px",
-          boxShadow: "0 3px 10px rgba(0,0,0,.08)",
-          marginBottom: "25px",
-        }}
-      >
-
-        <input
-          type="text"
-          placeholder="Search by user, action, description, IP, date or time"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{
-            width: "100%",
-            maxWidth: "420px",
-            padding: "10px 14px",
-            borderRadius: "8px",
-            border: "1px solid #ccc",
-          }}
-        />
-
+      <div className="audit-toolbar">
+        <label className="audit-search-field">
+          <Icon name="search" size={17} />
+          <input
+            type="search"
+            placeholder="Search user, action, description, IP, date or time"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search audit logs"
+          />
+        </label>
+        <label className="audit-filter-field">
+          <span>Action</span>
+          <select value={actionFilter} onChange={(event) => setActionFilter(event.target.value)}>
+            <option value="all">All actions</option>
+            <option value="login">Login</option>
+            <option value="create">Create</option>
+            <option value="update">Update</option>
+            <option value="delete">Delete</option>
+            <option value="scan">Scan</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
       </div>
 
-      <div className="table-shell">
+      <div className="table-shell audit-table-shell">
 
-      <table className="data-table">
+      <table className="data-table audit-table">
 
         <thead>
 
@@ -314,19 +287,7 @@ export default function AuditLogsPage() {
 
                   <td>
 
-                    <span
-                      className="audit-action-badge"
-                      style={{
-                        background: info.color,
-                        color: "#fff",
-                        padding: "6px 12px",
-                        borderRadius: "20px",
-                        fontSize: "13px",
-                        fontWeight: "600",
-                        display: "inline-block",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <span className="audit-action-label">
                       {info.text}
                     </span>
 
@@ -348,15 +309,10 @@ export default function AuditLogsPage() {
 
             <tr>
 
-              <td
-                colSpan="5"
-                style={{
-                  textAlign: "center",
-                  padding: "30px",
-                  color: "#777",
-                }}
-              >
-                No audit logs found.
+              <td colSpan="5" className="audit-empty-state">
+                <Icon name="audit" size={22} />
+                <strong>No audit logs found</strong>
+                <span>Try changing your search or action filter.</span>
               </td>
 
             </tr>

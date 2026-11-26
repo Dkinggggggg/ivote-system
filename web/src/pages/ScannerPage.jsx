@@ -160,8 +160,6 @@ export default function ScannerPage() {
   const autoCaptureRef = useRef(false);
   const stabilityRef = useRef({ frame: null, count: 0 });
 
-  const [devices, setDevices] = useState([]);
-  const [deviceId, setDeviceId] = useState(null);
   const [stream, setStream] = useState(null);
   const [cameraLoading, setCameraLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -387,7 +385,7 @@ export default function ScannerPage() {
     };
   }, [stream, processing, result, capturePaused]);
 
-  async function startStream(id = deviceId) {
+  async function startStream() {
     const requestId = ++cameraRequestRef.current;
     stopStream();
     setStream(null);
@@ -395,71 +393,48 @@ export default function ScannerPage() {
     setCameraFailed(false);
     setCameraLoading(true);
 
-    const attemptConstraints = [
-      ...(id ? [{ video: { deviceId: { exact: id }, aspectRatio: { ideal: 3 / 4 } }, audio: false }] : []),
-      { video: { facingMode: { ideal: 'environment' }, aspectRatio: { ideal: 3 / 4 } }, audio: false },
-      { video: { aspectRatio: { ideal: 3 / 4 } }, audio: false },
-      { video: true, audio: false },
-    ];
-
     let lastError = null;
 
-    for (const constraints of attemptConstraints) {
-      let candidateStream = null;
+    let candidateStream = null;
+
+    try {
+      candidateStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { exact: 'environment' }, aspectRatio: { ideal: 3 / 4 } },
+        audio: false,
+      });
+      if (requestId !== cameraRequestRef.current) {
+        stopStream(candidateStream);
+        return;
+      }
+
+      cameraStreamRef.current = candidateStream;
+      const video = videoRef.current;
+      if (!video) throw new Error('Camera preview element is not ready.');
+
+      video.srcObject = candidateStream;
+      video.muted = true;
+      video.setAttribute('playsinline', 'true');
+      video.setAttribute('muted', 'true');
 
       try {
-        candidateStream = await navigator.mediaDevices.getUserMedia(constraints);
-        if (requestId !== cameraRequestRef.current) {
-          stopStream(candidateStream);
-          return;
-        }
-
-        cameraStreamRef.current = candidateStream;
-        const video = videoRef.current;
-        if (!video) throw new Error('Camera preview element is not ready.');
-
-        video.srcObject = candidateStream;
-        video.muted = true;
-        video.setAttribute('playsinline', 'true');
-        video.setAttribute('muted', 'true');
-
-        try {
-          await video.play();
-        } catch (playErr) {
-          console.warn('Video play deferred or interrupted:', playErr);
-        }
-
-        if (requestId !== cameraRequestRef.current) {
-          stopStream(candidateStream);
-          return;
-        }
-
-        setStream(candidateStream);
-        setCameraLoading(false);
-
-        // Populate available cameras after permission is granted
-        try {
-          const list = await navigator.mediaDevices.enumerateDevices();
-          const cams = list.filter((d) => d.kind === 'videoinput');
-          setDevices(cams);
-          const currentTrack = candidateStream.getVideoTracks()[0];
-          const settings = currentTrack?.getSettings?.();
-          if (settings?.deviceId) {
-            setDeviceId(settings.deviceId);
-          } else if (cams.length > 0 && !id) {
-            setDeviceId(cams[0].deviceId);
-          }
-        } catch (enumErr) {
-          console.warn('enumerateDevices error:', enumErr);
-        }
-
-        return;
-      } catch (e) {
-        if (candidateStream) stopStream(candidateStream);
-        if (requestId !== cameraRequestRef.current) return;
-        lastError = e;
-        console.error('Camera stream attempt failed:', e);
+        await video.play();
+      } catch (playErr) {
+        console.warn('Video play deferred or interrupted:', playErr);
       }
+
+      if (requestId !== cameraRequestRef.current) {
+        stopStream(candidateStream);
+        return;
+      }
+
+      setStream(candidateStream);
+      setCameraLoading(false);
+      return;
+    } catch (e) {
+      if (candidateStream) stopStream(candidateStream);
+      if (requestId !== cameraRequestRef.current) return;
+      lastError = e;
+      console.error('Back camera stream attempt failed:', e);
     }
 
     setCameraLoading(false);
@@ -487,22 +462,8 @@ export default function ScannerPage() {
     if (videoRef.current?.srcObject === cameraStream) videoRef.current.srcObject = null;
   }
 
-  function switchCamera() {
-    if (devices.length < 2) return;
-    const idx = devices.findIndex((d) => d.deviceId === deviceId);
-    const next = devices[(idx + 1) % devices.length];
-    setDeviceId(next.deviceId);
-    startStream(next.deviceId);
-  }
-
-  function handleCameraChange(e) {
-    const selectedId = e.target.value;
-    setDeviceId(selectedId);
-    startStream(selectedId);
-  }
-
   function retryCamera() {
-    startStream(deviceId || undefined);
+    startStream();
   }
 
   async function clearResult() {
@@ -853,7 +814,6 @@ export default function ScannerPage() {
         <div className="scanner-brand">
           <BrandMark className="scanner-brand-mark" />
           <div>
-            <p className="scanner-office">Office of the Student Electoral Committee</p>
             <h1>Official Ballot Scanner</h1>
           </div>
         </div>
@@ -861,7 +821,7 @@ export default function ScannerPage() {
 
       <div className="scanner-body">
         <div className="preview-shell">
-          <video ref={videoRef} className="video-preview" playsInline muted autoPlay />
+          <video ref={videoRef} className="video-preview" playsInline muted autoPlay aria-label="Back camera preview" />
           <canvas ref={canvasRef} style={{ display: 'none' }} />
           <canvas ref={analysisCanvasRef} className="analysis-canvas" />
           {stream && (
@@ -935,6 +895,9 @@ export default function ScannerPage() {
         </div>
 
         <div className="controls">
+          <div className="scanner-controls-heading">
+            <h2>Capture Controls</h2>
+          </div>
           <input
             ref={fileInputRef}
             type="file"
@@ -947,26 +910,6 @@ export default function ScannerPage() {
           <button type="button" className="secondary" onClick={triggerFileInput} disabled={processing}>
             Upload / Take Photo
           </button>
-
-          {devices.length > 1 && (
-            <>
-              <select
-                className="camera-select"
-                value={deviceId || ''}
-                onChange={handleCameraChange}
-                disabled={processing}
-              >
-                {devices.map((d, index) => (
-                  <option key={d.deviceId || index} value={d.deviceId}>
-                    {d.label || `Camera ${index + 1}`}
-                  </option>
-                ))}
-              </select>
-              <button type="button" className="secondary" onClick={switchCamera} disabled={processing}>
-                Switch Camera
-              </button>
-            </>
-          )}
 
           <button
             type="button"

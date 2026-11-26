@@ -10,8 +10,7 @@ export default function DashboardPage() {
   const [elections, setElections] = useState([]);
   const [selectedElection, setSelectedElection] = useState("");
   const [selectedPrecinct, setSelectedPrecinct] = useState("all");
-  const [selectedYearLevel, setSelectedYearLevel] = useState("all");
-  const [precinctOptions, setPrecinctOptions] = useState(["all"]);
+  const [precinctOptions, setPrecinctOptions] = useState([{ id: "all", label: "All Precincts" }]);
   const [election, setElection] = useState(null);
   const [results, setResults] = useState({});
   const [error, setError] = useState(null);
@@ -44,34 +43,58 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user) return;
 
-    if (user.role === "committee_officer") {
-      setSelectedPrecinct(user.precinct || "all");
-      setSelectedYearLevel(user.year_level || "all");
-      return;
-    }
-
-    setSelectedPrecinct("all");
-    setSelectedYearLevel("all");
+    if (user.role !== "committee_officer") setSelectedPrecinct("all");
   }, [user]);
 
   useEffect(() => {
     if (user?.role !== "admin") {
-      setPrecinctOptions([user?.precinct || "all"]);
-      return;
+      if (user?.role !== "committee_officer") {
+        setPrecinctOptions([{ id: "all", label: "All Precincts" }]);
+        return;
+      }
+
+      let active = true;
+
+      apiClient.get("/precincts/assigned")
+        .then(({ data }) => {
+          if (!active) return;
+          const precinct = data.data;
+          if (precinct) {
+            const option = {
+              id: String(precinct.id),
+              label: `Precinct ${precinct.precinct_number || precinct.id} · ${precinct.room}`,
+            };
+            setPrecinctOptions([option]);
+            setSelectedPrecinct(option.id);
+          } else {
+            setPrecinctOptions([{ id: "unassigned", label: "No Precinct Assigned" }]);
+            setSelectedPrecinct("unassigned");
+          }
+        })
+        .catch(() => {
+          if (!active) return;
+          setPrecinctOptions([{ id: "unassigned", label: "No Precinct Assigned" }]);
+          setSelectedPrecinct("unassigned");
+        });
+
+      return () => { active = false; };
     }
 
     async function loadPrecinctOptions() {
       try {
-        const { data } = await apiClient.get("/users");
-        const precincts = [...new Set(
-          (data.data || [])
-            .filter((entry) => entry.role === "committee_officer" && entry.precinct)
-            .map((entry) => entry.precinct)
-        )].sort();
+        const { data } = await apiClient.get("/precincts");
+        const options = (data.data || []).map((precinct) => ({
+          id: String(precinct.id),
+          label: `Precinct ${precinct.precinct_number || precinct.id} · ${precinct.room}`,
+        }));
 
-        setPrecinctOptions(["all", ...precincts]);
+        setPrecinctOptions([{ id: "all", label: "All Precincts" }, ...options]);
+        setSelectedPrecinct((current) => (
+          options.some((option) => option.id === current) ? current : "all"
+        ));
       } catch {
-        setPrecinctOptions(["all"]);
+        setPrecinctOptions([{ id: "all", label: "All Precincts" }]);
+        setSelectedPrecinct("all");
       }
     }
 
@@ -110,22 +133,10 @@ export default function DashboardPage() {
         setElection(selected || null);
 
         const params = {};
-        const effectivePrecinct = user?.role === "committee_officer"
-          ? user.precinct || "all"
-          : selectedPrecinct;
-
-        if (effectivePrecinct && effectivePrecinct !== "all") {
-          params.precinct = effectivePrecinct;
-        }
-
-        if (selectedYearLevel && selectedYearLevel !== "all") {
-          params.year_level = selectedYearLevel;
-        }
-
         if (user?.role === "committee_officer") {
-          if (selectedYearLevel && selectedYearLevel !== "all") {
-            params.year_level = selectedYearLevel;
-          }
+          if (user.precinct && user.precinct !== "all") params.precinct = user.precinct;
+        } else if (selectedPrecinct !== "all") {
+          params.precinct_id = selectedPrecinct;
         }
 
         const { data: resultData } =
@@ -158,7 +169,7 @@ export default function DashboardPage() {
 
     return () => clearInterval(interval);
 
-  }, [selectedElection, selectedPrecinct, selectedYearLevel, user]);
+  }, [selectedElection, selectedPrecinct, user]);
 
   if (error) return <p>{error}</p>;
   function copyPublicLink() {
@@ -210,7 +221,7 @@ export default function DashboardPage() {
     <div
       className={isCompactLaptop ? "dashboard-page dashboard-page-compact" : "dashboard-page"}
       style={{
-        padding: "30px",
+        padding: "0",
         background: colors.pageBackground,
         minHeight: "100vh",
         width: "100%",
@@ -223,40 +234,17 @@ export default function DashboardPage() {
         style={{
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
+          alignItems: "flex-end",
           marginBottom: "28px",
-          gap: "18px",
+          gap: "20px",
           flexWrap: "wrap",
         }}
       >
 
         <div>
-
-          <div
-            style={{
-              display: "inline-block",
-              background: "rgba(61, 108, 153, 0.12)",
-              color: colors.primary,
-              borderRadius: "999px",
-              padding: "6px 12px",
-              fontSize: "12px",
-              fontWeight: 700,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              marginBottom: "10px",
-            }}
-          >
-            Officer Overview
-          </div>
-
-          <h1 style={{ margin: 0, fontSize: "32px" }}>
+          <h1 style={{ margin: 0, fontSize: "26px" }}>
             Election Dashboard
           </h1>
-
-          <p style={{ margin: "8px 0 0", color: colors.textMuted }}>
-            Live election monitoring and ballot processing
-          </p>
-
         </div>
 
         <div
@@ -266,9 +254,10 @@ export default function DashboardPage() {
             maxWidth: "360px",
             flex: "1 1 260px",
             background: colors.cardBackground,
-            borderRadius: "12px",
-            padding: "16px 18px",
-            boxShadow: colors.shadowSoft,
+            borderRadius: "4px",
+            padding: "12px",
+            border: `1px solid ${colors.border}`,
+            boxShadow: "none",
           }}
         >
 
@@ -297,46 +286,51 @@ export default function DashboardPage() {
             ))}
           </select>
 
-          <select
-            className="form-control"
-            value={selectedPrecinct}
-            disabled={user?.role !== "admin" || precinctOptions.length <= 1}
-            onChange={(e) => setSelectedPrecinct(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              borderRadius: "8px",
-              background: colors.surfaceSoft,
-              border: `1px solid ${colors.border}`,
-              color: "var(--text)",
-              marginBottom: "10px",
-            }}
-          >
-            {precinctOptions.map((option) => (
-              <option key={option} value={option}>
-                {option === "all" ? "All Precincts" : option}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="form-control"
-            value={selectedYearLevel}
-            onChange={(e) => setSelectedYearLevel(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              borderRadius: "8px",
-              background: colors.surfaceSoft,
-              border: `1px solid ${colors.border}`,
-              color: "var(--text)",
-            }}
-          >
-            <option value="all">All Year Levels</option>
-            <option value="2nd Year">2nd Year</option>
-            <option value="3rd Year">3rd Year</option>
-            <option value="4th Year">4th Year</option>
-          </select>
+          {user?.role === "admin" ? (
+            <select
+              className="form-control"
+              value={selectedPrecinct}
+              disabled={precinctOptions.length <= 1}
+              onChange={(e) => setSelectedPrecinct(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: "8px",
+                background: colors.surfaceSoft,
+                border: `1px solid ${colors.border}`,
+                color: "var(--text)",
+                marginBottom: "10px",
+              }}
+            >
+              {precinctOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div
+              className="dashboard-assigned-precinct"
+              role="status"
+              aria-label="Assigned precinct"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                width: "100%",
+                minHeight: "42px",
+                padding: "10px 12px",
+                borderRadius: "8px",
+                background: colors.surfaceSoft,
+                border: `1px solid ${colors.border}`,
+                color: "var(--text)",
+                marginBottom: "10px",
+              }}
+            >
+              {precinctOptions.find((option) => option.id === selectedPrecinct && option.id !== "all")?.label
+                || user?.precinct
+                || "No Precinct Assigned"}
+            </div>
+          )}
 
         </div>
 
@@ -348,16 +342,16 @@ export default function DashboardPage() {
         className="dashboard-stat-grid"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
-          gap: "20px",
-          marginBottom: "28px",
+          gridTemplateColumns: "repeat(4,minmax(0,1fr))",
+          gap: "14px",
+          marginBottom: "18px",
         }}
       >
 
-        <DashboardCard title="Ballots Generated" value={ballotStats.issued} color={colors.primary} />
-        <DashboardCard title="Ballots Scanned" value={ballotStats.counted} color={colors.accent} />
-        <DashboardCard title="Candidates" value={totalCandidates} color={colors.primary} />
-        <DashboardCard title="Manual Review" value={ballotStats.manualReview} color={colors.accent} />
+        <DashboardCard title="Ballots Generated" value={ballotStats.issued} color={colors.primary} icon="ballots" />
+        <DashboardCard title="Ballots Scanned" value={ballotStats.counted} color={colors.accent} icon="scan" />
+        <DashboardCard title="Candidates" value={totalCandidates} color={colors.primary} icon="users" />
+        <DashboardCard title="Manual Review" value={ballotStats.manualReview} color={colors.accent} icon="review" />
 
       </div>
 
@@ -378,9 +372,9 @@ export default function DashboardPage() {
           className="dashboard-panel dashboard-overview-panel"
           style={{
             background: colors.cardBackground,
-            borderRadius: "16px",
-            padding: "24px",
-            boxShadow: colors.shadowSoft,
+            borderRadius: "4px",
+            padding: "16px",
+            boxShadow: "none",
             border: `1px solid ${colors.border}`,
           }}
         >
@@ -410,9 +404,9 @@ export default function DashboardPage() {
             }}
           >
 
-            <InfoTile label="Turnout" value={`${scanningProgress}%`} color={colors.primary} />
-            <InfoTile label="Valid Votes" value={validBallots} color={colors.accent} />
-            <InfoTile label="Invalid" value={invalidBallots} color={colors.primary} />
+            <InfoTile label="Turnout" value={`${scanningProgress}%`} color={colors.primary} icon="dashboard" />
+            <InfoTile label="Valid Votes" value={validBallots} color={colors.accent} icon="check" />
+            <InfoTile label="Invalid" value={invalidBallots} color={colors.primary} icon="review" />
 
           </div>
 
@@ -475,7 +469,7 @@ export default function DashboardPage() {
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
-          gap: "20px",
+          gap: "14px",
           width: "100%",
           maxWidth: "1200px",
           marginBottom: "30px",
@@ -483,12 +477,12 @@ export default function DashboardPage() {
       >
 
         <div
-          className="dashboard-panel"
+          className="dashboard-panel dashboard-public-panel"
           style={{
             background: colors.cardBackground,
-            borderRadius: "16px",
-            padding: "24px",
-            boxShadow: colors.shadowSoft,
+            borderRadius: "4px",
+            padding: "16px",
+            boxShadow: "none",
             border: `1px solid ${colors.border}`,
           }}
         >
@@ -498,7 +492,7 @@ export default function DashboardPage() {
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginBottom: "18px",
+              marginBottom: "12px",
               gap: "12px",
               flexWrap: "wrap",
             }}
@@ -521,8 +515,9 @@ export default function DashboardPage() {
             value={`${window.location.origin}/results?election_id=${selectedElection}`}
             style={{
               width: "100%",
-              padding: "12px 14px",
-              borderRadius: "8px",
+              minHeight: "42px",
+              padding: "9px 12px",
+              borderRadius: "4px",
               border: `1px solid ${colors.border}`,
               background: colors.surfaceSoft,
               color: "var(--text)",
@@ -532,21 +527,21 @@ export default function DashboardPage() {
         </div>
 
         <div
-          className="dashboard-panel"
+          className="dashboard-panel dashboard-current-panel"
           style={{
             background: colors.cardBackground,
-            borderRadius: "16px",
-            padding: "24px",
-            boxShadow: colors.shadowSoft,
+            borderRadius: "4px",
+            padding: "16px",
+            boxShadow: "none",
             border: `1px solid ${colors.border}`,
           }}
         >
 
-          <h3 style={{ marginTop: 0, marginBottom: "18px" }}>Current Election</h3>
+          <h3 style={{ marginTop: 0, marginBottom: "12px", fontSize: "16px" }}>Current Election</h3>
 
-          <div style={{ display: "grid", gap: "12px" }}>
-            <div style={{ color: colors.textMuted, fontSize: "13px" }}>Election</div>
-            <div style={{ fontSize: "22px", fontWeight: 700 }}>{election.title}</div>
+          <div style={{ display: "grid", gap: "8px" }}>
+            <div style={{ color: colors.textMuted, fontSize: "12px" }}>Election</div>
+            <div style={{ fontSize: "16px", lineHeight: "1.35", fontWeight: 700, overflowWrap: "anywhere" }}>{election.title}</div>
             <div style={{ color: colors.textMuted }}>
               {election.description || "Election in progress"}
             </div>
@@ -554,7 +549,7 @@ export default function DashboardPage() {
               style={{
                 display: "inline-flex",
                 alignSelf: "flex-start",
-                borderRadius: "999px",
+                borderRadius: "4px",
                 background: "rgba(61, 108, 153, 0.12)",
                 color: colors.primary,
                 fontSize: "12px",
@@ -598,6 +593,7 @@ function DashboardCard({
   title,
   value,
   color,
+  icon,
 }) {
 
   return (
@@ -605,32 +601,47 @@ function DashboardCard({
     <div
       className="dashboard-stat-card"
       style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        minHeight: "82px",
         background: "var(--surface)",
-        borderRadius: "12px",
-        padding: "22px",
-        boxShadow: "var(--shadow-soft)",
-        borderLeft: `5px solid ${color}`,
+        borderRadius: "4px",
+        padding: "16px",
+        boxShadow: "none",
+        border: "1px solid var(--border)",
+        borderLeft: `3px solid ${color}`,
       }}
     >
 
-      <div
-        style={{
-          color: "var(--muted)",
-          fontSize: "14px",
-          marginBottom: "12px",
-        }}
+      <span
+        className="dashboard-summary-icon"
+        style={{ color, background: "var(--surface-soft)" }}
       >
-        {title}
-      </div>
+        <Icon name={icon} size={20} />
+      </span>
 
-      <div
-        style={{
-          fontSize: "30px",
-          fontWeight: "700",
-          color: color,
-        }}
-      >
-        {value}
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            color: "var(--muted)",
+            fontSize: "12px",
+            marginBottom: "2px",
+          }}
+        >
+          {title}
+        </div>
+
+        <div
+          style={{
+            fontSize: "24px",
+            lineHeight: "1",
+            fontWeight: "700",
+            color: color,
+          }}
+        >
+          {value}
+        </div>
       </div>
 
     </div>
@@ -678,26 +689,38 @@ function MetricTile({ label, value, color }) {
 
 }
 
-function InfoTile({ label, value, color }) {
+function InfoTile({ label, value, color, icon }) {
 
   return (
 
     <div
       className="dashboard-info-tile"
       style={{
-        background: "var(--surface-soft)",
-        borderRadius: "12px",
-        padding: "14px 16px",
-        borderLeft: `4px solid ${color}`,
+        background: "var(--surface)",
+        borderRadius: "4px",
+        minHeight: "82px",
+        padding: "16px",
+        border: "1px solid var(--border)",
+        borderLeft: `3px solid ${color}`,
       }}
     >
 
-      <div style={{ color: "var(--muted)", fontSize: "12px", marginBottom: "8px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <span
+          className="dashboard-summary-icon"
+          style={{ width: "32px", height: "32px", color, background: "var(--surface-soft)" }}
+        >
+          <Icon name={icon} size={16} />
+        </span>
+        <div>
+      <div style={{ color: "var(--muted)", fontSize: "12px", marginBottom: "2px" }}>
         {label}
       </div>
 
-      <div style={{ fontSize: "26px", fontWeight: 700, color: color }}>
+      <div style={{ fontSize: "24px", lineHeight: "1", fontWeight: 700, color: color }}>
         {value}
+      </div>
+        </div>
       </div>
 
     </div>

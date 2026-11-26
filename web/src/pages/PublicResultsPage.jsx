@@ -117,7 +117,9 @@ export default function PublicResultsPage() {
         </a>
       </header>
       <main className="results-main" id="top">
-        <header className="results-topbar"><div className="results-breadcrumb"><Icon name="home" size={14} /><Icon name="chevronRight" size={12} /><strong>Election Results</strong></div><div className="results-election-meta"><Icon name="calendar" size={16} /><div><strong>{election.title}</strong><small>A.Y. 2026 - 2027</small><span className={`election-status ${electionStatusClass}`}>{electionStatus}</span></div></div></header>
+        <header className="results-topbar">
+          <div className="results-election-meta"><Icon name="calendar" size={16} /><div><strong>{election.title}</strong><small>A.Y. 2026 - 2027</small><span className={`election-status ${electionStatusClass}`}>{electionStatus}</span></div></div>
+        </header>
         {!isOngoing && <section className="department-turnout" aria-labelledby="department-turnout-title">
           <div className="department-turnout-heading">
             <div>

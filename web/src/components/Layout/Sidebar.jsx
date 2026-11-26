@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import Icon from "../Icon";
 import BrandMark from "../BrandMark";
+import apiClient from "../../api/apiClient";
 
 const ADMIN_LINKS = [
   { to: '/dashboard', label: 'Dashboard' },
@@ -12,13 +13,13 @@ const ADMIN_LINKS = [
   { to: '/reports', label: 'Reports' },
   { to: '/audit-logs', label: 'Audit Logs' },
   { to: '/users', label: 'Users' },
+  { to: '/precincts', label: 'Manage Precinct' },
   { to: '/settings', label: 'Settings' },
 ];
 
 const OFFICER_LINKS = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/scanner', label: 'Scanner' },
-  { to: '/scanner-monitoring', label: 'Scanner Monitoring' },
   { to: '/settings', label: 'Settings' },
 ];
 
@@ -28,21 +29,42 @@ export default function Sidebar({ mobileOpen = false, onNavigate = () => {} }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [isElectionMenuOpen, setIsElectionMenuOpen] = useState(true);
+  const [draftElectionId, setDraftElectionId] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+
+    apiClient.get('/elections')
+      .then(({ data }) => {
+        if (!active) return;
+        const electionList = data.data ?? data;
+        const draft = (Array.isArray(electionList) ? electionList : [])
+          .find((item) => String(item.status || '').toLowerCase() === 'draft');
+        setDraftElectionId(draft ? String(draft.id) : null);
+      })
+      .catch(() => {
+        if (active) setDraftElectionId(null);
+      });
+
+    return () => { active = false; };
+  }, [location.pathname]);
 
   const electionManagementChildren = (() => {
-    const match = location.pathname.match(/^\/elections\/(\d+)(?:\/|$)/);
-    const electionId = match?.[1] || localStorage.getItem('selectedElectionId');
-
     return [
       { label: 'Election', path: '/elections' },
-      { label: 'Party List', path: electionId ? `/election-management/${electionId}/party-list` : '/election-management' },
-      { label: 'Candidates', path: electionId ? `/election-management/${electionId}/candidates` : '/election-management' },
-      { label: 'Review Election', path: electionId ? `/election-management/${electionId}/candidates?tab=review` : '/election-management' },
+      { label: 'Party List & Positions', path: '/election-management/party-list' },
+      { label: 'Candidates', path: '/election-management/candidates' },
+      { label: 'Review Election', path: '/election-management/review' },
     ];
   })();
 
   const handleChildNavigate = (path) => {
     onNavigate();
+
+    if (!draftElectionId && path === '/elections') {
+      localStorage.removeItem('selectedElectionId');
+    }
+
     navigate(path);
   };
 
@@ -115,7 +137,7 @@ export default function Sidebar({ mobileOpen = false, onNavigate = () => {} }) {
                         type="button"
                         className={
                           location.pathname === child.path.split('?')[0] ||
-                          (location.pathname.startsWith('/elections/') && child.label === 'Party List' && location.search.includes('tab=positions'))
+                          (location.pathname.startsWith('/elections/') && child.label === 'Party List & Positions' && location.search.includes('tab=positions'))
                             ? "sidebar-submenu-link active"
                             : "sidebar-submenu-link"
                         }

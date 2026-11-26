@@ -17,11 +17,11 @@ import BallotsPage from './pages/BallotsPage';
 import PrintBallotPage from './pages/PrintBallotPage';
 import PrintMultipleBallotsPage from './pages/PrintMultipleBallotsPage';
 
-import ScannerMonitoringPage from './pages/ScannerMonitoringPage';
 import ScannerPage from './pages/ScannerPage';
 import ReportsPage from './pages/ReportsPage';
 import AuditLogsPage from './pages/AuditLogsPage';
 import UsersPage from './pages/UsersPage';
+import PrecinctsPage from './pages/PrecinctsPage';
 import SettingsPage from './pages/SettingsPage';
 import PublicResultsPage from './pages/PublicResultsPage';
 import VerifyBallotPage from './pages/VerifyBallotPage';
@@ -95,12 +95,32 @@ export default function App() {
               />
 
               <Route
+                path="/election-management/party-list"
+                element={<ElectionCandidatesPage />}
+              />
+
+              <Route
+                path="/election-management/candidates"
+                element={<ElectionCandidatesPage />}
+              />
+
+              <Route
+                path="/election-management/review"
+                element={<ElectionCandidatesPage />}
+              />
+
+              <Route
                 path="/election-management/:electionId/party-list"
                 element={<ElectionCandidatesPage />}
               />
 
               <Route
                 path="/election-management/:electionId/candidates"
+                element={<ElectionCandidatesPage />}
+              />
+
+              <Route
+                path="/election-management/:electionId/review"
                 element={<ElectionCandidatesPage />}
               />
 
@@ -130,11 +150,6 @@ export default function App() {
               />
 
               <Route
-                path="/scanner-monitoring"
-                element={<ScannerMonitoringPage />}
-              />
-
-              <Route
                 path="/scanner"
                 element={<ScannerPage />}
               />
@@ -152,6 +167,11 @@ export default function App() {
               <Route
                 path="/users"
                 element={<UsersPage />}
+              />
+
+              <Route
+                path="/precincts"
+                element={<PrecinctsPage />}
               />
 
               <Route

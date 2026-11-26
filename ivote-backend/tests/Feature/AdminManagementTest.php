@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Ballot;
 use App\Models\Candidate;
 use App\Models\Election;
+use App\Models\Precinct;
 use App\Models\Position;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -23,6 +24,206 @@ class AdminManagementTest extends TestCase
     private function tokenFor(User $user): string
     {
         return $user->issueApiToken();
+    }
+
+    public function test_admin_can_manage_precincts_with_generated_numbers(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $token = $this->tokenFor($admin);
+        $commissioner = User::factory()->create([
+            'name' => 'Alex Commissioner',
+            'role' => 'committee_officer',
+            'program' => null,
+            'year_level' => null,
+            'precinct' => null,
+        ]);
+        $precinctData = [
+            'room' => 'Sci Building Room 202',
+            'program' => 'BSIT',
+            'year_levels' => ['2nd Year', '3rd Year'],
+        ];
+
+        $this->withToken($token)
+            ->postJson('/api/precincts', array_replace($precinctData, [
+                'room' => 'Invalid Year Room',
+                'year_levels' => ['4th Year'],
+            ]))
+            ->assertUnprocessable();
+
+        $created = $this->withToken($token)
+            ->postJson('/api/precincts', $precinctData)
+            ->assertCreated()
+            ->assertJsonPath('data.room', $precinctData['room'])
+            ->assertJsonPath('data.program', $precinctData['program'])
+            ->assertJsonPath('data.year_levels', $precinctData['year_levels'])
+            ->assertJsonPath('data.commissioner_user_id', null)
+            ->assertJsonPath('data.precinct_number', 1);
+
+        $precinctId = $created->json('data.id');
+        $this->assertDatabaseHas('precincts', [
+            'id' => $created->json('data.id'),
+            'room' => $precinctData['room'],
+        ]);
+
+        $this->withToken($token)
+            ->getJson('/api/precincts')
+            ->assertOk()
+            ->assertJsonPath('data.0.precinct_number', 1);
+
+        $this->withToken($token)
+            ->patchJson("/api/precincts/{$precinctId}/commissioner", [
+                'commissioner_user_id' => $commissioner->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.commissioner_user.name', 'Alex Commissioner')
+            ->assertJsonPath('data.commissioner', 'Alex Commissioner');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $commissioner->id,
+            'program' => 'BSIT',
+            'year_level' => '2nd Year, 3rd Year',
+            'precinct' => 'BSIT - 2nd Year, 3rd Year',
+        ]);
+
+        $this->withToken($token)
+            ->putJson("/api/precincts/{$precinctId}", array_replace($precinctData, [
+                'room' => 'Science Room 202',
+                'year_levels' => ['1st Year'],
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data.room', 'Science Room 202')
+            ->assertJsonPath('data.year_levels', ['1st Year']);
+
+        $this->assertDatabaseHas('users', [
+            'id' => $commissioner->id,
+            'program' => 'BSIT',
+            'year_level' => '1st Year',
+            'precinct' => 'BSIT - 1st Year',
+        ]);
+
+        $this->withToken($token)
+            ->deleteJson("/api/precincts/{$precinctId}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('precincts', ['id' => $precinctId]);
+        $this->assertDatabaseHas('users', [
+            'id' => $commissioner->id,
+            'program' => null,
+            'year_level' => null,
+            'precinct' => null,
+        ]);
+    }
+
+    public function test_admin_can_create_committee_officer_before_assigning_precinct(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->withToken($this->tokenFor($admin))
+            ->postJson('/api/users', [
+                'name' => 'Unassigned Officer',
+                'username' => 'unassigned_officer',
+                'email' => 'unassigned.officer@ivote.com',
+                'role' => 'committee_officer',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.role', 'committee_officer')
+            ->assertJsonPath('data.program', null)
+            ->assertJsonPath('data.year_level', null);
+    }
+
+    public function test_next_precinct_starts_at_one_after_all_precincts_are_deleted(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $token = $this->tokenFor($admin);
+
+        $first = $this->withToken($token)
+            ->postJson('/api/precincts', [
+                'room' => 'Room 101',
+                'program' => 'BSIT',
+                'year_levels' => ['1st Year'],
+            ])
+            ->assertCreated();
+
+        $second = $this->withToken($token)
+            ->postJson('/api/precincts', [
+                'room' => 'Room 102',
+                'program' => 'BSIT',
+                'year_levels' => ['2nd Year'],
+            ])
+            ->assertCreated();
+
+        $this->withToken($token)
+            ->deleteJson('/api/precincts/' . $first->json('data.id'))
+            ->assertNoContent();
+        $this->withToken($token)
+            ->deleteJson('/api/precincts/' . $second->json('data.id'))
+            ->assertNoContent();
+
+        $this->assertDatabaseCount('precincts', 0);
+
+        $this->withToken($token)
+            ->postJson('/api/precincts', [
+                'room' => 'Room 201',
+                'program' => 'BSIT',
+                'year_levels' => ['3rd Year'],
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.precinct_number', 1);
+
+        $this->assertDatabaseHas('precincts', [
+            'room' => 'Room 201',
+            'precinct_number' => 1,
+        ]);
+    }
+
+    public function test_committee_officer_can_load_its_assigned_dashboard_precinct(): void
+    {
+        $officer = User::factory()->create([
+            'role' => 'committee_officer',
+            'program' => 'BSIT',
+            'year_level' => '2nd Year',
+            'precinct' => 'BSIT - 2nd Year',
+        ]);
+        $precinct = Precinct::create([
+            'room' => 'Science Room 202',
+            'program' => 'BSIT',
+            'year_level' => '2nd Year',
+            'year_levels' => ['2nd Year'],
+            'commissioner' => $officer->name,
+            'commissioner_user_id' => $officer->id,
+        ]);
+
+        $this->withToken($this->tokenFor($officer))
+            ->getJson('/api/precincts/assigned')
+            ->assertOk()
+            ->assertJsonPath('data.id', $precinct->id)
+            ->assertJsonPath('data.precinct_number', $precinct->id)
+            ->assertJsonPath('data.room', 'Science Room 202');
+    }
+
+    public function test_committee_officer_without_managed_precinct_does_not_fall_back_to_user_precinct(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $election = Election::factory()->create(['created_by' => $admin->id]);
+        $officer = User::factory()->create([
+            'role' => 'committee_officer',
+            'program' => 'BSIT',
+            'year_level' => '2nd Year',
+            'precinct' => 'BSIT - 2nd Year',
+        ]);
+
+        Ballot::factory()->create([
+            'election_id' => $election->id,
+            'program' => 'BSIT',
+            'year_level' => '2nd Year',
+            'precinct' => 'BSIT - 2nd Year',
+            'status' => 'issued',
+        ]);
+
+        $this->withToken($this->tokenFor($officer))
+            ->getJson("/api/elections/{$election->id}/results?program=BSIT&year_level=2nd+Year")
+            ->assertOk()
+            ->assertJsonPath('data.ballotStats.issued', 0);
     }
 
     public function test_admin_can_generate_ballots_for_an_election(): void
@@ -303,6 +504,53 @@ class AdminManagementTest extends TestCase
             ->assertJsonPath('data.ballotStats.issued', 1)
             ->assertJsonPath('data.ballotStats.counted', 1)
             ->assertJsonPath('data.ballotStats.manualReview', 0);
+    }
+
+    public function test_dashboard_results_use_managed_precinct_year_levels(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $election = Election::factory()->create(['created_by' => $admin->id]);
+        $precinct = Precinct::create([
+            'room' => 'Science Room 202',
+            'program' => 'BSIT',
+            'year_level' => '2nd Year',
+            'year_levels' => ['2nd Year', '3rd Year'],
+            'commissioner' => '',
+        ]);
+
+        Ballot::factory()->create([
+            'election_id' => $election->id,
+            'program' => 'BSIT',
+            'year_level' => '2nd Year',
+            'precinct' => null,
+            'status' => 'counted',
+        ]);
+        Ballot::factory()->create([
+            'election_id' => $election->id,
+            'program' => 'BSIT',
+            'year_level' => '3rd Year',
+            'precinct' => null,
+            'status' => 'issued',
+        ]);
+        Ballot::factory()->create([
+            'election_id' => $election->id,
+            'program' => 'BSIT',
+            'year_level' => '1st Year',
+            'precinct' => null,
+            'status' => 'issued',
+        ]);
+
+        $this->withToken($this->tokenFor($admin))
+            ->getJson("/api/elections/{$election->id}/results?precinct_id={$precinct->id}")
+            ->assertOk()
+            ->assertJsonPath('data.ballotStats.issued', 2)
+            ->assertJsonPath('data.ballotStats.counted', 1);
+
+        $this->withToken($this->tokenFor($admin))
+            ->getJson("/api/reports/winners?election_id={$election->id}&precinct_id={$precinct->id}")
+            ->assertOk()
+            ->assertJsonPath('total_ballots', 2)
+            ->assertJsonPath('precinct', 'Precinct ' . $precinct->id . ' · Science Room 202');
     }
 
     public function test_precinct_results_include_unscanned_ballots_for_assigned_department_and_year(): void

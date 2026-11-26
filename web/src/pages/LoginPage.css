@@ -64,13 +64,41 @@
 }
 
 .centered-login-card {
+	position: relative;
 	padding: clamp(28px, 5vw, 42px);
-	border: 1px solid rgba(211, 225, 255, .2);
+	border: 1px solid rgba(211, 225, 255, .22);
 	border-radius: 12px;
-	background: rgba(14, 29, 63, .7);
+	background:
+		linear-gradient(rgba(179, 202, 244, .035) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(179, 202, 244, .035) 1px, transparent 1px),
+		rgba(14, 29, 63, .76);
+	background-size: 32px 32px, 32px 32px, auto;
 	box-shadow: 0 28px 80px rgba(0, 0, 0, .34), inset 0 1px rgba(255, 255, 255, .08);
 	backdrop-filter: blur(18px);
 	-webkit-backdrop-filter: blur(18px);
+}
+
+.centered-login-card::before,
+.centered-login-card::after {
+	position: absolute;
+	width: 36px;
+	height: 36px;
+	content: '';
+	pointer-events: none;
+}
+
+.centered-login-card::before {
+	top: -5px;
+	left: -5px;
+	border-top: 2px solid var(--login-gold);
+	border-left: 2px solid var(--login-gold);
+}
+
+.centered-login-card::after {
+	right: -5px;
+	bottom: -5px;
+	border-right: 2px solid rgba(255, 183, 0, .72);
+	border-bottom: 2px solid rgba(255, 183, 0, .72);
 }
 
 .centered-login-header {
@@ -78,6 +106,15 @@
 	flex-direction: column;
 	align-items: center;
 	text-align: center;
+	animation: centered-login-arrive 520ms 100ms cubic-bezier(.2, .7, .25, 1) both;
+}
+
+.centered-login-header::after {
+	width: min(230px, 68%);
+	height: 1px;
+	margin-top: 0;
+	background: linear-gradient(90deg, transparent, rgba(255, 183, 0, .7), transparent);
+	content: '';
 }
 
 .centered-login-brand {
@@ -122,6 +159,7 @@
 	margin: 0 0 24px;
 	padding: 0;
 	border: 0;
+	animation: centered-login-arrive 500ms 280ms cubic-bezier(.2, .7, .25, 1) both;
 }
 
 .centered-login-roles legend {
@@ -165,6 +203,11 @@
 .centered-login-field {
 	display: block;
 	margin-bottom: 18px;
+	animation: centered-login-arrive 480ms 380ms cubic-bezier(.2, .7, .25, 1) both;
+}
+
+.centered-login-field:nth-of-type(2) {
+	animation-delay: 470ms;
 }
 
 .centered-login-field > label {
@@ -268,8 +311,8 @@
 	gap: 13px;
 	overflow: hidden;
 	border: 1px solid rgba(255, 183, 0, .72);
-	border-radius: 6px;
-	background: linear-gradient(110deg, #ffb700, #ffd45f);
+	border-radius: 4px;
+	background: linear-gradient(110deg, #ffb700, #ffd45f 56%, #f1a800);
 	box-shadow: 0 8px 24px rgba(255, 183, 0, .13);
 	color: #0b1736;
 	cursor: pointer;
@@ -306,6 +349,18 @@
 	cursor: wait;
 	opacity: .72;
 	transform: none;
+}
+
+.centered-login-submit:disabled::after {
+	position: absolute;
+	right: 18px;
+	width: 14px;
+	height: 14px;
+	border: 2px solid rgba(11, 23, 54, .28);
+	border-top-color: #0b1736;
+	border-radius: 50%;
+	content: '';
+	animation: centered-login-spin 700ms linear infinite;
 }
 
 .centered-login-secondary {
@@ -415,6 +470,10 @@
 	to { transform: translateX(420%) skewX(-20deg); }
 }
 
+@keyframes centered-login-spin {
+	to { transform: rotate(360deg); }
+}
+
 @keyframes centered-login-particle-drift {
 	from { opacity: .18; transform: translate3d(0, 8px, 0); }
 	to { opacity: .62; transform: translate3d(7px, -12px, 0); }
@@ -433,6 +492,16 @@
 	.centered-login-quote { margin-top: 19px; font-size: 11px; }
 }
 
+@media (max-height: 760px) {
+	.centered-login-page { padding-top: 20px; padding-bottom: 20px; }
+	.centered-login-card { padding-top: 24px; padding-bottom: 24px; }
+	.centered-login-brand-mark { width: 56px; height: 56px; }
+	.centered-login-intro { margin-bottom: 16px; }
+	.centered-login-roles { margin-bottom: 18px; }
+	.centered-login-field { margin-bottom: 14px; }
+	.centered-login-quote { margin-top: 16px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.centered-login-content { animation: none; }
 	.centered-login-brand-mark { animation: none; }
@@ -441,8 +510,12 @@
 	.centered-login-success-circle,
 	.centered-login-success-check { animation: none; }
 	.centered-login-success-check { stroke-dashoffset: 0; }
+	.centered-login-header,
+	.centered-login-roles,
+	.centered-login-field,
 	.centered-login-submit,
 	.centered-login-submit::before,
+	.centered-login-submit::after,
 	.centered-login-role,
 	.centered-login-input-wrap input { transition: none; }
 }

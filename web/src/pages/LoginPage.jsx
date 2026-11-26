@@ -266,7 +266,7 @@ export default function CenteredLoginPage() {
             </div>
 
             {error && <p className="centered-login-error" role="alert">{error}</p>}
-            <button className="centered-login-submit" type="submit" disabled={isLoading}>
+            <button className="centered-login-submit" type="submit" disabled={isLoading} aria-busy={isLoading}>
               <span>{isLoading ? 'Signing in…' : 'Log In'}</span>
               <span aria-hidden="true">→</span>
             </button>

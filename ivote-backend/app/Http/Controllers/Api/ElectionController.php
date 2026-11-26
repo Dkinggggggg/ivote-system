@@ -10,6 +10,7 @@ use App\Models\AuditLog;
 use App\Models\Ballot;
 use App\Models\BallotScan;
 use App\Models\Election;
+use App\Models\Precinct;
 use App\Models\Position;
 use App\Models\User;
 use App\Models\Vote;
@@ -161,33 +162,51 @@ class ElectionController extends Controller
         );
 
         $user = $request->user();
-        $precinct = $user?->role === 'committee_officer'
-            ? ($user->precinct ?: $request->query('precinct'))
-            : $request->query('precinct');
+        $managedPrecinct = null;
+        if ($user?->role === 'committee_officer') {
+            $managedPrecinct = Precinct::where('commissioner_user_id', $user->id)->first();
+        } elseif ($request->filled('precinct_id')) {
+            $managedPrecinct = Precinct::findOrFail($request->integer('precinct_id'));
+        }
+
+        $noAssignedPrecinct = $user?->role === 'committee_officer' && ! $managedPrecinct;
+        $precinct = $managedPrecinct
+            ? $managedPrecinct->program . ' - ' . implode(', ', $managedPrecinct->year_levels ?? [$managedPrecinct->year_level])
+            : ($noAssignedPrecinct ? null : $request->query('precinct'));
         $program = $request->query('program');
         $yearLevel = $request->query('year_level');
         $precinctAssignments = collect();
 
-        if ($user?->role === 'committee_officer' && $program && $yearLevel) {
-            $precinctAssignments = collect([[
-                'program' => $program,
-                'year_level' => $yearLevel,
-            ]]);
-        } elseif (! empty($precinct) && $precinct !== 'all') {
+        if ($managedPrecinct) {
+            $precinctAssignments = collect($managedPrecinct->year_levels ?? [$managedPrecinct->year_level])
+                ->filter()
+                ->map(fn (string $year) => [
+                    'program' => $managedPrecinct->program,
+                    'year_level' => $year,
+                ])
+                ->values();
+        } elseif ($user?->role !== 'committee_officer' && ! empty($precinct) && $precinct !== 'all') {
             $precinctAssignments = User::query()
                 ->where('role', 'committee_officer')
                 ->whereNotNull('program')
                 ->whereNotNull('year_level')
                 ->get(['program', 'year_level', 'precinct', 'role'])
                 ->filter(fn (User $officer) => $officer->precinct === $precinct || ($officer->program . ' - ' . $officer->year_level) === $precinct)
-                ->map(fn (User $officer) => [
-                    'program' => $officer->program,
-                    'year_level' => $officer->year_level,
-                ])
+                ->flatMap(fn (User $officer) => collect(explode(',', (string) $officer->year_level))
+                    ->map(fn (string $year) => [
+                        'program' => $officer->program,
+                        'year_level' => trim($year),
+                    ])
+                    ->filter(fn (array $assignment) => $assignment['year_level'] !== ''))
                 ->values();
         }
 
-        $applyPrecinctScope = static function ($query) use ($precinct, $precinctAssignments) {
+        $applyPrecinctScope = static function ($query) use ($precinct, $precinctAssignments, $noAssignedPrecinct) {
+            if ($noAssignedPrecinct) {
+                $query->whereRaw('1 = 0');
+                return;
+            }
+
             if (empty($precinct) || $precinct === 'all') {
                 return;
             }

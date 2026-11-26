@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\ElectionController;
 use App\Http\Controllers\Api\PositionController;
 use App\Http\Controllers\Api\PositionCategoryController;
 use App\Http\Controllers\Api\PartyController;
+use App\Http\Controllers\Api\PrecinctController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ScanController;
 use App\Http\Controllers\Api\UserController;
@@ -35,7 +36,8 @@ Route::get('/ballots/verify/{serialNumber}', [BallotController::class, 'verify']
 Route::middleware('auth.token')->group(function () {
 
     Route::post('/logout', [AuthController::class, 'logout'])->name('auth.logout');
-    Route::post('/change-password', [AuthController::class, 'changePassword'])->name('auth.change-password');
+
+    Route::get('/precincts/assigned', [PrecinctController::class, 'assigned']);
 
     // Elections
     Route::get('/elections', [ElectionController::class, 'index']);
@@ -60,6 +62,15 @@ Route::middleware('auth.token')->group(function () {
 // Admin-only routes
 // ---------------------------------------------------------------------
 Route::middleware(['auth.token', 'admin'])->group(function () {
+
+    Route::post('/change-password', [AuthController::class, 'changePassword'])->name('auth.change-password');
+
+    // Precincts
+    Route::get('/precincts', [PrecinctController::class, 'index']);
+    Route::post('/precincts', [PrecinctController::class, 'store']);
+    Route::put('/precincts/{precinct}', [PrecinctController::class, 'update']);
+    Route::patch('/precincts/{precinct}/commissioner', [PrecinctController::class, 'updateCommissioner']);
+    Route::delete('/precincts/{precinct}', [PrecinctController::class, 'destroy']);
 
     // =====================================================
     // Elections
@@ -117,6 +128,7 @@ Route::middleware(['auth.token', 'admin'])->group(function () {
     Route::get('/users', [UserController::class, 'index']);
     Route::post('/users', [UserController::class, 'store']);
     Route::put('/users/{user}', [UserController::class, 'update']);
+    Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword']);
     Route::patch('/users/{user}/status', [UserController::class, 'setStatus']);
     Route::delete('/users/{user}', [UserController::class, 'destroy']);
 

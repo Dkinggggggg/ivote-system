@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import apiClient from '../api/apiClient';
 import PaginationControls from '../components/PaginationControls';
 import LoadingSkeleton from '../components/LoadingSkeleton';
+import Icon from '../components/Icon';
 import './BallotsPage.css';
 import logo from '../assets/logo.png';
-import { parseBallotSerial, positionsForBallot } from '../utils/ballotPositions';
+import { positionsForBallot } from '../utils/ballotPositions';
 
 const yearLevels = ['2nd Year', '3rd Year', '4th Year'];
 
@@ -317,12 +318,6 @@ export default function BallotsPage() {
     : ballots.filter((ballot) => Number(ballot.election_id ?? ballot.election?.id) === selectedElectionId);
   const selectedElectionPrintedBallots = selectedElectionBallots.filter((ballot) => ballot.printed_at);
   const remainingBallots = selectedElectionBallots.length - selectedElectionPrintedBallots.length;
-  const selectedDepartment = departments.find((department) => department.name === program);
-  const departmentTotalBallots = selectedDepartment
-    ? selectedElectionBallots.filter((ballot) => (
-      parseBallotSerial(ballot.serial_number)?.departmentCode === selectedDepartment.code
-    )).length
-    : 0;
   const ballotDepartments = [...new Set(ballots.map((ballot) => ballot.program).filter(Boolean))].sort();
   const ballotYearLevels = [...new Set(ballots
     .filter((ballot) => !ballotDepartmentFilter || ballot.program === ballotDepartmentFilter)
@@ -500,96 +495,47 @@ export default function BallotsPage() {
 
 return (
 
-  <div>
+  <div className="ballots-page">
 
-    <h1 style={{ marginBottom: "25px" }}>
-      Ballot Management
-    </h1>
+    <header className="ballots-page-header">
+      <div>
+        <h1>Ballot Management</h1>
+      </div>
+    </header>
 
     {/* SUMMARY CARDS */}
 
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
-        gap: "20px",
-        marginBottom: "35px"
-      }}
-    >
+    <div className="ballots-summary-grid ballots-management-summary-grid">
 
-      <div
-        style={{
-          background: "#fff",
-          padding: "22px",
-          borderRadius: "12px",
-          borderLeft: "5px solid var(--primary-2)",
-          boxShadow: "0 3px 10px rgba(0,0,0,.08)"
-        }}
-      >
-        <h3>Total Ballots</h3>
-        <h1 style={{ color: "var(--primary-2)" }}>
-          {selectedElectionBallots.length}
-        </h1>
+      <div className="ballots-summary-card">
+        <span className="ballots-summary-icon"><Icon name="ballots" size={20} /></span>
+        <div>
+          <p>Total Ballots</p>
+          <strong>{selectedElectionBallots.length}</strong>
+        </div>
       </div>
 
-      <div
-        style={{
-          background: "#fff",
-          padding: "22px",
-          borderRadius: "12px",
-          borderLeft: "5px solid var(--accent)",
-          boxShadow: "0 3px 10px rgba(0,0,0,.08)"
-        }}
-      >
-        <h3>Printed</h3>
-        <h1 style={{ color: "var(--accent)" }}>
-          {selectedElectionPrintedBallots.length}
-        </h1>
+      <div className="ballots-summary-card">
+        <span className="ballots-summary-icon is-accent"><Icon name="print" size={20} /></span>
+        <div>
+          <p>Printed</p>
+          <strong>{selectedElectionPrintedBallots.length}</strong>
+        </div>
       </div>
 
-      <div
-        style={{
-          background: "#fff",
-          padding: "22px",
-          borderRadius: "12px",
-          borderLeft: "5px solid var(--primary-2)",
-          boxShadow: "0 3px 10px rgba(0,0,0,.08)"
-        }}
-      >
-        <h3>Remaining</h3>
-        <h1 style={{ color: "var(--primary-2)" }}>
-          {remainingBallots}
-        </h1>
-      </div>
-
-      <div
-        style={{
-          background: "#fff",
-          padding: "22px",
-          borderRadius: "12px",
-          borderLeft: "5px solid var(--accent)",
-          boxShadow: "0 3px 10px rgba(0,0,0,.08)"
-        }}
-      >
-        <h3>Department Total Ballots</h3>
-        <h1 style={{ color: "var(--accent)" }}>
-          {departmentTotalBallots}
-        </h1>
+      <div className="ballots-summary-card">
+        <span className="ballots-summary-icon"><Icon name="list" size={20} /></span>
+        <div>
+          <p>Remaining</p>
+          <strong>{remainingBallots}</strong>
+        </div>
       </div>
 
     </div>
 
     {/* GENERATE */}
 
-    <div
-      style={{
-        background: "#fff",
-        padding: "25px",
-        borderRadius: "12px",
-        boxShadow: "0 3px 10px rgba(0,0,0,.08)",
-        marginBottom: "30px"
-      }}
-    >
+    <div className="ballots-generator-panel">
 
       <h2>Generate Ballots</h2>
 
@@ -696,15 +642,7 @@ return (
 
     {/* TOOLS */}
 
-    <div
-      style={{
-        background: "#fff",
-        padding: "20px",
-        borderRadius: "12px",
-        boxShadow: "0 3px 10px rgba(0,0,0,.08)",
-        marginBottom: "25px"
-      }}
-    >
+    <div className="ballots-toolbar-panel">
 
       <div
         style={{

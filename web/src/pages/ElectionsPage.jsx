@@ -44,10 +44,15 @@ export default function ElectionsPage() {
 
     try {
 
-      await apiClient.post('/elections', {
+      const { data } = await apiClient.post('/elections', {
         title,
         status: 'draft',
       });
+
+      const createdElection = data?.data ?? data;
+      if (createdElection?.id) {
+        localStorage.setItem('selectedElectionId', String(createdElection.id));
+      }
 
       setTitle('');
 
@@ -272,6 +277,17 @@ export default function ElectionsPage() {
                       <button type="button" className="election-row-icon-button is-danger" onClick={() => handleDelete(election.id)} title={`Delete ${election.title}`} aria-label={`Delete ${election.title}`}>
                         <Icon name="delete" size={15} />
                       </button>
+                      {election.status === 'active' && (
+                        <button
+                          type="button"
+                          className="election-close-button"
+                          onClick={() => handleClose(election.id)}
+                          aria-label={`Close ${election.title}`}
+                        >
+                          <Icon name="close" size={15} />
+                          Close Election
+                        </button>
+                      )}
                     </div>
                   )
                 ) : (
@@ -329,7 +345,7 @@ export default function ElectionsPage() {
 
                 )}
 
-                {isAdmin && election.status === 'active' && !election.finalized_at && (
+                {isAdmin && election.status === 'closed' && !election.finalized_at && (
                   <button
                     type="button"
                     className="finalize-election-button"
@@ -386,109 +402,39 @@ export default function ElectionsPage() {
 
   return (
 
-    <div>
+    <div className="ballots-page">
 
-      <h1 style={{ marginBottom: 10 }}>
-        Election Management
-      </h1>
+      <header className="ballots-page-header">
+        <div>
+          <h1>Election Management</h1>
+        </div>
+      </header>
 
-      <p
-        style={{
-          color: "#666",
-          marginBottom: 30
-        }}
-      >
-        Create, activate and manage elections from one place.
-      </p>
+      <div className="ballots-summary-grid">
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
-          gap: 20,
-          marginBottom: 35
-        }}
-      >
-
-        <div
-          style={{
-            background: "#fff",
-            padding: 22,
-            borderRadius: 12,
-            border: "1px solid #c7d4e8",
-            borderLeft: "5px solid var(--primary-2)",
-            boxShadow: "0 3px 10px rgba(0,0,0,.08)"
-          }}
-        >
-          <h3>Total Elections</h3>
-          <h1 style={{ color: "var(--primary-2)" }}>
-            {elections.length}
-          </h1>
+        <div className="ballots-summary-card">
+          <span className="ballots-summary-icon"><Icon name="election" size={20} /></span>
+          <div><p>Total Elections</p><strong>{elections.length}</strong></div>
         </div>
 
-        <div
-          style={{
-            background: "#fff",
-            padding: 22,
-            borderRadius: 12,
-            border: "1px solid #c7d4e8",
-            borderLeft: "5px solid var(--accent)",
-            boxShadow: "0 3px 10px rgba(0,0,0,.08)"
-          }}
-        >
-          <h3>Active</h3>
-          <h1 style={{ color: "var(--accent)" }}>
-            {activeElectionCount}
-          </h1>
+        <div className="ballots-summary-card">
+          <span className="ballots-summary-icon is-accent"><Icon name="check" size={20} /></span>
+          <div><p>Active</p><strong>{activeElectionCount}</strong></div>
         </div>
 
-        <div
-          style={{
-            background: "#fff",
-            padding: 22,
-            borderRadius: 12,
-            border: "1px solid #c7d4e8",
-            borderLeft: "5px solid var(--primary-2)",
-            boxShadow: "0 3px 10px rgba(0,0,0,.08)"
-          }}
-        >
-          <h3>Draft</h3>
-          <h1 style={{ color: "var(--success)" }}>
-            {draftElectionCount}
-          </h1>
+        <div className="ballots-summary-card">
+          <span className="ballots-summary-icon"><Icon name="review" size={20} /></span>
+          <div><p>Draft</p><strong>{draftElectionCount}</strong></div>
         </div>
 
-        <div
-          style={{
-            background: "#fff",
-            padding: 22,
-            borderRadius: 12,
-            border: "1px solid #c7d4e8",
-            borderLeft: "5px solid var(--accent)",
-            boxShadow: "0 3px 10px rgba(0,0,0,.08)"
-          }}
-        >
-          <h3>History</h3>
-          <h1 style={{ color: "var(--primary-2)" }}>
-            {historyElections.length}
-          </h1>
+        <div className="ballots-summary-card">
+          <span className="ballots-summary-icon is-accent"><Icon name="audit" size={20} /></span>
+          <div><p>History</p><strong>{historyElections.length}</strong></div>
         </div>
 
       </div>
 
-      <div
-        style={{
-          background: "#fff",
-          padding: 25,
-          borderRadius: 12,
-          border: "1px solid #c7d4e8",
-          boxShadow: "0 3px 10px rgba(0,0,0,.08)",
-          marginBottom: 35,
-          maxWidth: "650px",
-          width: "100%",
-          minWidth: 0,
-        }}
-      >
+      <div className="ballots-generator-panel">
 
         <h2 style={{ marginBottom: 20 }}>
           Create New Election
@@ -528,7 +474,7 @@ export default function ElectionsPage() {
 
       </div>
 
-      <section className="election-list-panel" style={{ marginBottom: 35 }}>
+      <section className="election-list-panel ballots-toolbar-panel" style={{ marginBottom: 18 }}>
 
         <h2 style={{ marginBottom: 15 }}>
           Current Elections
@@ -538,7 +484,7 @@ export default function ElectionsPage() {
 
       </section>
 
-      <section className="election-list-panel">
+      <section className="election-list-panel ballots-toolbar-panel">
 
         <h2 style={{ marginBottom: 15 }}>
           Election History

@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\Ballot;
 use App\Models\Candidate;
 use App\Models\Election;
+use App\Models\Precinct;
 use App\Models\Position;
 use App\Models\PositionCategory;
 use App\Models\User;
@@ -31,8 +32,7 @@ class ReportController extends Controller
     public function winners(Request $request)
     {
         $election = $this->getElection($request);
-        $precinct = $request->query('precinct');
-        $precinctAssignments = $this->precinctAssignments($precinct);
+        [$precinct, $precinctAssignments] = $this->resolvePrecinctFilter($request);
         PositionCategory::provisionDefaultsForElection($election->id);
 
         $positions = Position::with('category')
@@ -75,8 +75,7 @@ class ReportController extends Controller
     private function resultsCsv(Request $request): StreamedResponse
     {
         $election = $this->getElection($request);
-        $precinct = $request->query('precinct');
-        $precinctAssignments = $this->precinctAssignments($precinct);
+        [$precinct, $precinctAssignments] = $this->resolvePrecinctFilter($request);
         PositionCategory::provisionDefaultsForElection($election->id);
 
         $positions = Position::with('category')
@@ -232,13 +231,38 @@ class ReportController extends Controller
             ->whereNotNull('year_level')
             ->get(['role', 'program', 'year_level', 'precinct'])
             ->filter(fn (User $user) => $user->precinct === $precinct)
-            ->map(fn (User $user) => [
-                'program' => $user->program,
-                'year_level' => $user->year_level,
-            ])
+            ->flatMap(fn (User $user) => collect(explode(',', (string) $user->year_level))
+                ->map(fn (string $year) => [
+                    'program' => $user->program,
+                    'year_level' => trim($year),
+                ])
+                ->filter(fn (array $assignment) => $assignment['year_level'] !== ''))
             ->unique(fn (array $assignment) => $assignment['program'] . '|' . $assignment['year_level'])
             ->values()
             ->all();
+    }
+
+    private function resolvePrecinctFilter(Request $request): array
+    {
+        if (! $request->filled('precinct_id')) {
+            $precinct = $request->query('precinct');
+
+            return [$precinct, $this->precinctAssignments($precinct)];
+        }
+
+        $managedPrecinct = Precinct::findOrFail($request->query('precinct_id'));
+        $yearLevels = $managedPrecinct->year_levels ?? [$managedPrecinct->year_level];
+        $assignments = collect($yearLevels)
+            ->filter()
+            ->map(fn (string $year) => [
+                'program' => $managedPrecinct->program,
+                'year_level' => $year,
+            ])
+            ->values()
+            ->all();
+        $precinctLabel = 'Precinct ' . $managedPrecinct->precinct_number . ' · ' . $managedPrecinct->room;
+
+        return [$precinctLabel, $assignments];
     }
 
     private function applyPrecinctScope($query, ?string $precinct, array $precinctAssignments): void

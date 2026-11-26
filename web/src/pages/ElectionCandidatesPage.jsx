@@ -14,6 +14,13 @@ function getErrorMessage(error, fallback) {
   return validationMessage || error.response?.data?.message || fallback;
 }
 
+const MANAGEMENT_ELECTION_KEY = 'ivote_management_selected_election_id';
+
+// Reset only when the JavaScript document is reloaded. SPA navigation keeps
+// the key so switching between management pages remains synchronized.
+localStorage.removeItem(MANAGEMENT_ELECTION_KEY);
+localStorage.removeItem('selectedElectionId');
+
 function getDefaultPositionCategoryId(positionName, categories) {
   const normalizedName = positionName.trim().toLowerCase();
   let categoryName = '';
@@ -46,7 +53,11 @@ export default function ElectionCandidatesPage() {
   const [parties, setParties] = useState([]);
   const [candidates, setCandidates] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('candidates');
+  const [activeTab, setActiveTab] = useState(() => {
+    if (location.pathname.endsWith('/party-list')) return 'positions';
+    if (location.pathname.endsWith('/review') || new URLSearchParams(location.search).get('tab') === 'review') return 'review';
+    return 'candidates';
+  });
   const [partyFilter, setPartyFilter] = useState('all');
   const [positionFilter, setPositionFilter] = useState('all');
   const [candidateSearch, setCandidateSearch] = useState('');
@@ -83,7 +94,73 @@ export default function ElectionCandidatesPage() {
 
   useEffect(() => {
     setExpandedCandidateCategories({});
-    loadData();
+    setSelectedElectionValue('');
+    setPartyFilter('all');
+    setPositionFilter('all');
+    setCandidateSearch('');
+    let active = true;
+
+    async function resolveElection() {
+      const selectedId = localStorage.getItem(MANAGEMENT_ELECTION_KEY);
+      const section = location.pathname.endsWith('/review')
+        ? 'review'
+        : location.pathname.endsWith('/candidates')
+          ? 'candidates'
+          : 'party-list';
+
+      if (!electionId || String(electionId) === 'undefined' || String(electionId) === 'null') {
+        setIsLoading(true);
+        setElection(null);
+        setPositions([]);
+        setCandidates([]);
+        setParties([]);
+
+        try {
+          const { data } = await apiClient.get('/elections');
+          if (!active) return;
+
+          const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
+          const drafts = list.filter((item) => String(item?.status || '').toLowerCase() === 'draft');
+          setAvailableElections(drafts);
+
+          if (selectedId) {
+            const selectedElection = drafts.find((item) => String(item.id) === String(selectedId));
+            if (selectedElection) {
+              const query = section === 'review' ? '?selected=1' : '';
+              navigate(`/election-management/${selectedId}/${section}${query}`, { replace: true });
+              return;
+            }
+            localStorage.removeItem(MANAGEMENT_ELECTION_KEY);
+          }
+        } catch {
+          if (!active) return;
+          setAvailableElections([]);
+        } finally {
+          if (active) setIsLoading(false);
+        }
+
+        return;
+      }
+
+      if (!selectedId || String(selectedId) !== String(electionId)) {
+        setIsLoading(false);
+        setElection(null);
+        setPositions([]);
+        setCandidates([]);
+        setParties([]);
+        setAvailableElections([]);
+        navigate(`/election-management/${section}`, { replace: true });
+        return;
+      }
+
+      loadData();
+    }
+
+    resolveElection();
+
+    return () => {
+      active = false;
+    };
   }, [electionId]);
 
   useEffect(() => {
@@ -109,12 +186,21 @@ export default function ElectionCandidatesPage() {
   }, [isCandidateFormOpen]);
 
   useEffect(() => {
+    if (!electionId) {
+      if (location.pathname.endsWith('/party-list')) setActiveTab('positions');
+      else if (location.pathname.endsWith('/review')) setActiveTab('review');
+      else setActiveTab('candidates');
+      return;
+    }
+
     const tab = searchParams.get('tab');
     const pathTab = location.pathname.endsWith('/party-list')
       ? 'positions'
       : location.pathname.endsWith('/candidates')
         ? 'candidates'
-        : null;
+        : location.pathname.endsWith('/review')
+          ? 'review'
+          : null;
 
     const nextTab = tab || pathTab || 'candidates';
     if (nextTab === 'positions' || nextTab === 'candidates' || nextTab === 'review') {
@@ -123,6 +209,12 @@ export default function ElectionCandidatesPage() {
   }, [searchParams, location.pathname]);
 
   async function loadData() {
+    setIsLoading(true);
+    setPositions([]);
+    setCategories([]);
+    setCandidates([]);
+    setParties([]);
+
     try {
       const [electionResponse, positionsResponse, candidatesResponse, partiesResponse, categoriesResponse, electionsResponse] = await Promise.all([
         apiClient.get(`/elections/${electionId}`),
@@ -133,22 +225,45 @@ export default function ElectionCandidatesPage() {
         apiClient.get('/elections').catch(() => null),
       ]);
 
-      const loadedPositions = positionsResponse.data.data;
-      const loadedCategories = categoriesResponse.data.data.filter(
-        (category) => !['Custom Positions', 'Custom Position'].includes(category.name)
+      const loadedPositions = Array.isArray(positionsResponse?.data?.data)
+        ? positionsResponse.data.data
+        : (Array.isArray(positionsResponse?.data) ? positionsResponse.data : []);
+      const rawCategories = Array.isArray(categoriesResponse?.data?.data)
+        ? categoriesResponse.data.data
+        : (Array.isArray(categoriesResponse?.data) ? categoriesResponse.data : []);
+      const loadedCategories = rawCategories.filter(
+        (category) => !['Custom Positions', 'Custom Position'].includes(category?.name)
       );
+      const loadedCandidates = Array.isArray(candidatesResponse?.data?.data)
+        ? candidatesResponse.data.data
+        : (Array.isArray(candidatesResponse?.data) ? candidatesResponse.data : []);
+      const loadedParties = Array.isArray(partiesResponse?.data?.data)
+        ? partiesResponse.data.data
+        : (Array.isArray(partiesResponse?.data) ? partiesResponse.data : []);
       const preferredPositionId = searchParams.get('position');
 
-      setElection(electionResponse.data.data);
+      const loadedElection = electionResponse?.data?.data ?? electionResponse?.data ?? null;
+      setElection(loadedElection);
+      setSelectedElectionValue(String(electionId));
       if (electionsResponse) {
-        const electionList = electionsResponse.data.data ?? electionsResponse.data;
+        const electionList = electionsResponse.data?.data ?? electionsResponse.data;
         setAvailableElections(Array.isArray(electionList) ? electionList : []);
+      } else {
+        setAvailableElections(
+          String(loadedElection?.status || '').toLowerCase() === 'draft' && loadedElection
+            ? [loadedElection]
+            : []
+        );
       }
-      localStorage.setItem('selectedElectionId', String(electionId));
       setPositions(loadedPositions);
       setCategories(loadedCategories);
-      setCandidates(candidatesResponse.data.data);
-      setParties(partiesResponse.data.data);
+      setCandidates(loadedCandidates);
+      setParties(loadedParties);
+
+      if (['active', 'closed'].includes(String(loadedElection?.status || '').toLowerCase())) {
+        navigate('/elections', { replace: true });
+        return;
+      }
       setPositionCategoryId((currentId) => (
         loadedCategories.some((category) => String(category.id) === currentId)
           ? currentId
@@ -166,6 +281,11 @@ export default function ElectionCandidatesPage() {
         return '';
       });
     } catch (error) {
+      if (error.response?.status === 404) {
+        localStorage.removeItem(MANAGEMENT_ELECTION_KEY);
+        navigate('/elections', { replace: true });
+        return;
+      }
       setCandidateError(getErrorMessage(error, 'Unable to load election candidates.'));
     } finally {
       setIsLoading(false);
@@ -176,11 +296,24 @@ export default function ElectionCandidatesPage() {
     const nextElectionId = event.target.value;
     if (!nextElectionId) return;
 
-    setSelectedElectionValue(nextElectionId);
-    localStorage.setItem('selectedElectionId', nextElectionId);
-    const electionSection = activeTab === 'positions' ? 'party-list' : 'candidates';
-    const reviewQuery = activeTab === 'review' ? '?tab=review' : '';
-    navigate(`/election-management/${nextElectionId}/${electionSection}${reviewQuery}`);
+    setSelectedElectionValue(String(nextElectionId));
+    localStorage.setItem(MANAGEMENT_ELECTION_KEY, nextElectionId);
+
+    const path = location.pathname || '';
+    const pathSection = path.includes('/review')
+      ? 'review'
+      : path.includes('/party-list')
+        ? 'party-list'
+        : path.includes('/candidates')
+          ? 'candidates'
+          : activeTab === 'positions'
+            ? 'party-list'
+            : activeTab === 'review'
+              ? 'review'
+              : 'candidates';
+
+    const query = pathSection === 'review' ? '?selected=1' : '';
+    navigate(`/election-management/${nextElectionId}/${pathSection}${query}`);
   }
 
   function resetCandidateForm() {
@@ -499,7 +632,7 @@ export default function ElectionCandidatesPage() {
     {
       label: 'Missing candidates',
       items: positions
-        .filter((position) => candidates.filter((candidate) => candidate.position_id === position.id).length === 0)
+        .filter((position) => candidates.filter((candidate) => String(candidate.position_id) === String(position.id)).length === 0)
         .map((position) => `${position.name} has no registered candidates.`),
     },
     {
@@ -822,10 +955,11 @@ export default function ElectionCandidatesPage() {
     );
   }
 
-  const selectableElections = availableElections.filter(
-    (item) => String(item.status || '').toLowerCase() !== 'closed'
-  );
-  const includeCurrentElection = election && String(election.status || '').toLowerCase() !== 'closed';
+  const selectableElections = availableElections.filter((item) => (
+    String(item.status || '').toLowerCase() === 'draft'
+  ));
+  const includeCurrentElection = election
+    && String(election.status || '').toLowerCase() === 'draft';
   const electionOptions = includeCurrentElection && !selectableElections.some(
     (item) => String(item.id) === String(election.id)
   )
@@ -834,20 +968,21 @@ export default function ElectionCandidatesPage() {
   const backTarget = activeTab === 'review'
     ? { label: 'Back to Candidates', path: `/election-management/${electionId}/candidates` }
     : activeTab === 'candidates'
-      ? { label: 'Back to Party List', path: `/election-management/${electionId}/party-list` }
+      ? { label: 'Back to Party List & Position Setup', path: `/election-management/${electionId}/party-list` }
       : { label: 'Back to Election', path: '/elections' };
 
   if (isLoading) {
-    return <LoadingSkeleton variant="candidates" label="Loading candidates" />;
+    const skeletonVariant = activeTab === 'review' ? 'review' : activeTab === 'positions' ? 'party-list' : 'candidates';
+    const skeletonLabel = activeTab === 'review' ? 'Loading review' : activeTab === 'positions' ? 'Loading party list and positions' : 'Loading candidates';
+    return <LoadingSkeleton variant={skeletonVariant} label={skeletonLabel} />;
   }
 
   return (
     <div className="candidate-page">
-      <header className="reference-management-header">
-        <div className="reference-management-title">
+      <header className={activeTab === 'review' ? 'users-page-header review-management-header' : 'reference-management-header'}>
+        <div className={activeTab === 'review' ? '' : 'reference-management-title'}>
           <div>
-            <h1>Election Management</h1>
-            <p>Manage parties and candidates for your election.</p>
+            <h1>{activeTab === 'review' ? 'Review Election' : activeTab === 'positions' ? 'Party List & Position Setup' : 'Election Management'}</h1>
           </div>
         </div>
         <div className="reference-management-actions">
@@ -855,7 +990,7 @@ export default function ElectionCandidatesPage() {
             <select
               className="reference-election-select"
               aria-label="Select Election"
-              value={selectedElectionValue}
+              value={electionId ? String(electionId) : (selectedElectionValue || '')}
               onChange={handleElectionChange}
             >
               <option value="" disabled>{electionOptions.length ? 'Select election' : 'No elections available'}</option>
@@ -872,7 +1007,26 @@ export default function ElectionCandidatesPage() {
 
       {candidateError && <p className="candidate-feedback candidate-feedback-error" role="alert">{candidateError}</p>}
 
-      {activeTab === 'positions' && (
+      {!electionId && electionOptions.length > 0 && (
+        <section className="review-election-empty-panel">
+          <Icon name="election" size={26} />
+          <strong>Select Election</strong>
+          <span>Select a draft election above to manage its party list, positions, candidates, and review.</span>
+        </section>
+      )}
+
+      {!electionId && electionOptions.length === 0 && (
+        <section className="review-election-empty-panel">
+          <Icon name="election" size={26} />
+          <strong>No draft election available</strong>
+          <span>Create an election first, then manage its party list, positions, candidates, and review.</span>
+          <button type="button" className="election-close-button" onClick={() => navigate('/elections')}>
+            Go to Election Management
+          </button>
+        </section>
+      )}
+
+      {electionId && activeTab === 'positions' && (
         <div className="reference-tab-panel">
           {renderPartyManagement()}
 
@@ -1105,34 +1259,34 @@ export default function ElectionCandidatesPage() {
         </div>
       )}
 
-      {activeTab === 'candidates' && (
+      {electionId && activeTab === 'candidates' && (
         <div className="reference-tab-panel">
           {renderCandidateRegistration()}
           {renderCandidateDirectory()}
         </div>
       )}
 
-      {activeTab === 'review' && (
+      {electionId && activeTab === 'review' && (
+        searchParams.get('selected') !== '1' || !election ? (
+          <section className="review-election-empty-panel">
+            <Icon name="review" size={26} />
+            <strong>Select a draft election</strong>
+            <span>The review details will appear after selecting an election.</span>
+          </section>
+        ) : (
         <section className="review-election-panel">
-          <div className="reference-panel-heading">
-            <Icon name="review" size={27} />
-            <div>
-              <h2>Review Election</h2>
-              <p>Check the election setup before moving on.</p>
-            </div>
-          </div>
 
-          <div className="review-election-summary">
-            <div><span>Election</span><strong>{election?.title || '—'}</strong></div>
-            <div><span>Status</span><strong>{election?.status || '—'}</strong></div>
-            <div><span>POSITION</span><strong>{positions.length}</strong></div>
-            <div><span>CANDIDATE</span><strong>{candidates.length}</strong></div>
-            <div><span>PARTIES</span><strong>{parties.length}</strong></div>
+          <div className="users-summary-grid review-election-summary">
+            <div className="users-summary-card"><span className="users-summary-icon"><Icon name="election" size={20} /></span><div><p>Election</p><strong title={election?.title || '—'}>{election?.title || '—'}</strong></div></div>
+            <div className="users-summary-card"><span className="users-summary-icon is-accent"><Icon name="check" size={20} /></span><div><p>Status</p><strong>{election?.status || '—'}</strong></div></div>
+            <div className="users-summary-card"><span className="users-summary-icon"><Icon name="list" size={20} /></span><div><p>Positions</p><strong>{positions.length}</strong></div></div>
+            <div className="users-summary-card"><span className="users-summary-icon"><Icon name="users" size={20} /></span><div><p>Candidates</p><strong>{candidates.length}</strong></div></div>
+            <div className="users-summary-card"><span className="users-summary-icon is-accent"><Icon name="parties" size={20} /></span><div><p>Parties</p><strong>{parties.length}</strong></div></div>
           </div>
 
           <div className="review-content-grid">
             <div className="review-section-card">
-              <h3>Position Review</h3>
+              <h3>Position/Candidates Review</h3>
               <div className="review-position-list">
                 {positions.map((position) => {
                   const positionCandidates = candidates.filter((candidate) => candidate.position_id === position.id);
@@ -1211,6 +1365,7 @@ export default function ElectionCandidatesPage() {
             </button>
           </div>
         </section>
+        )
       )}
     </div>
   );
